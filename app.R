@@ -9,7 +9,7 @@ library(lubridate)
 options(gargle_oauth_cache = ".secrets")
 
 # Authenticate using the cached token
-gs4_auth(cache = ".secrets", email = "mskurmann@gmail.com")
+gs4_auth(cache = ".secrets", email = "nascentperu@gmail.com")
 
 # Google Sheet URL
 ss <- "https://docs.google.com/spreadsheets/d/1alH554dg1gqiNYqIcky7XORxJiSnwzLYsOYFlkDtUdY/edit?usp=sharing"
@@ -634,4 +634,5 @@ server <- function(input, output, session) {
 app <- shinyApp(ui = ui, server = server)
 
 # To run the app, add local IP as host for local hosting
-shiny::runApp(app, host="")
+shiny::runApp(app)
+
