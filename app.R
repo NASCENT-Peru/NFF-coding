@@ -5,8 +5,10 @@ library(plotly)
 library(dplyr)
 library(lubridate)
 
+#p <- profvis::profvis({
+
 # Set authentication token to be stored in a folder called .secrets
-options(gargle_oauth_cache = ".secrets")
+#options(gargle_oauth_cache = ".secrets")
 
 # Authenticate using the cached token
 gs4_auth(cache = ".secrets", email = "nascentperu@gmail.com")
@@ -22,7 +24,7 @@ read_statements <- function(language) {
 }
 
 # Register the www directory
-addResourcePath("www", "www")
+#addResourcePath("www", "www")
 
 # Create grid points for the ternary plot
 grid_points <- expand.grid(
@@ -46,13 +48,13 @@ generate_circle_points_barycentric <- function(center, radius, n_points = 100) {
   lambda <- center[1]
   mu <- center[2]
   nu <- center[3]
-  
+
   circle_points <- data.frame(
     a = lambda + radius * cos(angles),
     b = mu + radius * cos(angles + 2 * pi / 3),
     c = nu + radius * cos(angles - 2 * pi / 3)
   )
-  
+
   circle_points <- circle_points[round(circle_points$a + circle_points$b + circle_points$c, 1) == 30, ]
   return(circle_points)
 }
@@ -634,5 +636,7 @@ server <- function(input, output, session) {
 app <- shinyApp(ui = ui, server = server)
 
 # To run the app, add local IP as host for local hosting
-shiny::runApp(app)
+#shiny::runApp(app)
+
+#})
 
