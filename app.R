@@ -633,7 +633,7 @@ server <- function(input, output, session) {
 }
 
 # Start the Shiny app
-app <- shinyApp(ui = ui, server = server)
+shinyApp(ui = ui, server = server)
 
 # To run the app, add local IP as host for local hosting
 #shiny::runApp(app)
