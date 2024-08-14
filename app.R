@@ -6,7 +6,7 @@ library(dplyr)
 library(lubridate)
 
 # Set authentication token to be stored in a folder called .secrets
-#options(gargle_oauth_cache = ".secrets")
+options(gargle_oauth_cache = ".secrets")
 
 # Authenticate using the cached token
 gs4_auth(cache = ".secrets", email = "nascentperu@gmail.com")
@@ -24,10 +24,111 @@ read_statements <- function(language) {
 # Register the www directory
 addResourcePath("www", "www")
 
+# Create grid points for the ternary plot
+grid_points <- expand.grid(
+  A = seq(0, 30, by = 1),
+  B = seq(0, 30, by = 1),
+  C = seq(0, 30, by = 1)
+)
+grid_points <- grid_points[round(grid_points$A + grid_points$B + grid_points$C, 1) == 30, ]
+
+# Function to format the hover text
+hover_text <- function(df) {
+  df %>%
+    group_by(A, B, C) %>%
+    summarize(Text = paste("Statement", Statement_ID, ": ", Statement, collapse = "<br>"), .groups = 'drop') %>%
+    select(A, B, C, Text)
+}
+
+# Function to generate circle points in barycentric coordinates
+generate_circle_points_barycentric <- function(center, radius, n_points = 100) {
+  angles <- seq(0, 2 * pi, length.out = n_points)
+  lambda <- center[1]
+  mu <- center[2]
+  nu <- center[3]
+  
+  circle_points <- data.frame(
+    a = lambda + radius * cos(angles),
+    b = mu + radius * cos(angles + 2 * pi / 3),
+    c = nu + radius * cos(angles - 2 * pi / 3)
+  )
+  
+  circle_points <- circle_points[round(circle_points$a + circle_points$b + circle_points$c, 1) == 30, ]
+  return(circle_points)
+}
+
+# Function to calculate linearly increasing opacities
+calculate_opacities_linear <- function(num_circles) {
+  opacities <- numeric(num_circles)
+  T_prev <- 0
+  for (i in 1:num_circles) {
+    T_i <- i / num_circles
+    opacities[i] <- (T_i - T_prev) / (1 - T_prev)
+    T_prev <- T_i
+  }
+  return(opacities)
+}
+
+# Define centers and radius for the circles (in barycentric coordinates)
+centers <- list(
+  c(0, 0, 30),  # Red circle center
+  c(30, 0, 0),  # Green circle center
+  c(0, 30, 0)   # Blue circle center
+)
+radius <- 22  # Radius of the circles
+
+# Define colors with base color and calculate opacities
+num_circles <- 35
+opacities <- calculate_opacities_linear(num_circles)
+colors <- list(
+  list(base_color = 'rgba(219, 114, 114, %.2f)', # Red color
+       opacities = rev(opacities)),  # Reverse to start with highest opacity
+  list(base_color = 'rgba(175, 194, 120, %.2f)', # Green color
+       opacities = rev(opacities)),  # Reverse to start with highest opacity
+  list(base_color = 'rgba(94, 135, 189, %.2f)', # Blue color
+       opacities = rev(opacities))  # Reverse to start with highest opacity
+)
+
+# Generate concentric circles with varying opacities
+concentric_circles <- list()
+for (i in 1:length(centers)) {
+  center <- centers[[i]]
+  color_info <- colors[[i]]
+  for (j in 1:length(color_info$opacities)) {
+    opacity <- color_info$opacities[j]
+    circle_color <- sprintf(color_info$base_color, opacity)
+    points <- generate_circle_points_barycentric(center, radius * j / length(color_info$opacities))
+    concentric_circles[[length(concentric_circles) + 1]] <- list(points = points, color = circle_color)
+  }
+}
+
+# Function to adjust points to respect ternary constraints
+adjust_points <- function(points) {
+  points$a <- pmin(pmax(points$a, 0), 30)
+  points$b <- pmin(pmax(points$b, 0), 30)
+  points$c <- 30 - points$a - points$b
+  return(points)
+}
+
+# Adjust all concentric circle points
+concentric_circles <- lapply(concentric_circles, function(circle) {
+  circle$points <- adjust_points(circle$points)
+  return(circle)
+})
+
 # UI for the Shiny app
 ui <- fluidPage(
   titlePanel("Ternary Plot Survey"),
   useShinyjs(),
+  tags$script(HTML("
+    Shiny.addCustomMessageHandler('scrollToRow', function(rowIndex) {
+      var table = document.getElementById('progress_table');
+      var rows = table.getElementsByTagName('tr');
+      if (rows[rowIndex]) {
+        rows[rowIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  ")),
   sidebarLayout(
     sidebarPanel(
       selectInput("language", "Language / Idioma", choices = c("English" = "en", "Español" = "es")),
@@ -218,11 +319,17 @@ server <- function(input, output, session) {
     }
     new_index <- current_statement() %% nrow(statements()) + 1
     current_statement(new_index)
+    
+    # Scroll the table to the current statement
+    session$sendCustomMessage("scrollToRow", new_index)
   })
   
   observeEvent(input$back_button, {
     new_index <- ifelse(current_statement() > 1, current_statement() - 1, nrow(statements()))
     current_statement(new_index)
+    
+    # Scroll the table to the current statement
+    session$sendCustomMessage("scrollToRow", new_index)
   })
   
   observeEvent(input$unsure_button, {
@@ -521,9 +628,3 @@ server <- function(input, output, session) {
 
 # Start the Shiny app
 shinyApp(ui = ui, server = server)
-
-# To run the app, add local IP as host for local hosting
-#shiny::runApp(app)
-
-#})
-
