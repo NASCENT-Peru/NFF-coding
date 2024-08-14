@@ -6,7 +6,7 @@ library(dplyr)
 library(lubridate)
 
 # Set authentication token to be stored in a folder called .secrets
-#options(gargle_oauth_cache = ".secrets")
+options(gargle_oauth_cache = ".secrets")
 
 # Authenticate using the cached token
 gs4_auth(cache = ".secrets", email = "nascentperu@gmail.com")
@@ -24,10 +24,112 @@ read_statements <- function(language) {
 # Register the www directory
 addResourcePath("www", "www")
 
+# Create grid points for the ternary plot
+grid_points <- expand.grid(
+  A = seq(0, 30, by = 1),
+  B = seq(0, 30, by = 1),
+  C = seq(0, 30, by = 1)
+)
+grid_points <- grid_points[round(grid_points$A + grid_points$B + grid_points$C, 1) == 30, ]
+
+# Function to format the hover text
+hover_text <- function(df) {
+  df %>%
+    group_by(A, B, C) %>%
+    summarize(Text = paste("Statement", Statement_ID, ": ", Statement, collapse = "<br>"), .groups = 'drop') %>%
+    select(A, B, C, Text)
+}
+
+# Function to generate circle points in barycentric coordinates
+generate_circle_points_barycentric <- function(center, radius, n_points = 100) {
+  angles <- seq(0, 2 * pi, length.out = n_points)
+  lambda <- center[1]
+  mu <- center[2]
+  nu <- center[3]
+  
+  circle_points <- data.frame(
+    a = lambda + radius * cos(angles),
+    b = mu + radius * cos(angles + 2 * pi / 3),
+    c = nu + radius * cos(angles - 2 * pi / 3)
+  )
+  
+  circle_points <- circle_points[round(circle_points$a + circle_points$b + circle_points$c, 1) == 30, ]
+  return(circle_points)
+}
+
+# Function to calculate linearly increasing opacities
+calculate_opacities_linear <- function(num_circles) {
+  opacities <- numeric(num_circles)
+  T_prev <- 0
+  for (i in 1:num_circles) {
+    T_i <- i / num_circles
+    opacities[i] <- (T_i - T_prev) / (1 - T_prev)
+    T_prev <- T_i
+  }
+  return(opacities)
+}
+
+# Define centers and radius for the circles (in barycentric coordinates)
+centers <- list(
+  c(0, 0, 30),  # Red circle center
+  c(30, 0, 0),  # Green circle center
+  c(0, 30, 0)   # Blue circle center
+)
+radius <- 22  # Radius of the circles
+
+# Define colors with base color and calculate opacities
+num_circles <- 35
+opacities <- calculate_opacities_linear(num_circles)
+colors <- list(
+  list(base_color = 'rgba(219, 114, 114, %.2f)', # Red color
+       opacities = rev(opacities)),  # Reverse to start with highest opacity
+  list(base_color = 'rgba(175, 194, 120, %.2f)', # Green color
+       opacities = rev(opacities)),  # Reverse to start with highest opacity
+  list(base_color = 'rgba(94, 135, 189, %.2f)', # Blue color
+       opacities = rev(opacities))  # Reverse to start with highest opacity
+)
+
+# Generate concentric circles with varying opacities
+concentric_circles <- list()
+for (i in 1:length(centers)) {
+  center <- centers[[i]]
+  color_info <- colors[[i]]
+  for (j in 1:length(color_info$opacities)) {
+    opacity <- color_info$opacities[j]
+    circle_color <- sprintf(color_info$base_color, opacity)
+    points <- generate_circle_points_barycentric(center, radius * j / length(color_info$opacities))
+    concentric_circles[[length(concentric_circles) + 1]] <- list(points = points, color = circle_color)
+  }
+}
+
+# Function to adjust points to respect ternary constraints
+adjust_points <- function(points) {
+  points$a <- pmin(pmax(points$a, 0), 30)
+  points$b <- pmin(pmax(points$b, 0), 30)
+  points$c <- 30 - points$a - points$b
+  return(points)
+}
+
+# Adjust all concentric circle points
+concentric_circles <- lapply(concentric_circles, function(circle) {
+  circle$points <- adjust_points(circle$points)
+  return(circle)
+})
+
+
 # UI for the Shiny app
 ui <- fluidPage(
-  titlePanel("Ternary Plot Survey"),
+  titlePanel(title = span(img(src = "NASCENT_logo_horizontal.jpg", height = 50), "Scenario content coding survey")),
   useShinyjs(),
+  tags$script(HTML("
+    Shiny.addCustomMessageHandler('scrollToRow', function(rowIndex) {
+      var table = document.getElementById('progress_table');
+      var rows = table.getElementsByTagName('tr');
+      if (rows[rowIndex]) {
+        rows[rowIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  ")),
   sidebarLayout(
     sidebarPanel(
       selectInput("language", "Language / Idioma", choices = c("English" = "en", "Español" = "es")),
@@ -54,12 +156,15 @@ ui <- fluidPage(
         textOutput("explanation"),
         tags$head(tags$style(HTML("#explanation_title {font-weight: bold;} #explanation {font-size: 18px;}"))),
         br(), br(),
-        uiOutput("unsure_button_ui"),
-        uiOutput("next_button_ui"),
-        uiOutput("back_button_ui"),
-        uiOutput("submit_button_ui"),
+        uiOutput("unsure_button_ui", style = 'display: inline-block; margin-left: 15px;'),
+        uiOutput("next_button_ui", style = 'display: inline-block;'),
+        uiOutput("back_button_ui", style = 'display: inline-block;'),
+        uiOutput("submit_button_ui", style = 'display: inline-block;'),
         textOutput("warning_submission"),
+        br(),
         div(style = 'overflow-y:scroll; max-height:300px;', tableOutput("progress_table"))
+      ),
+      tags$head(tags$style("#intro_content{font-size: 18px;}")
       )
     ),
     mainPanel(
@@ -169,19 +274,47 @@ server <- function(input, output, session) {
     step <- intro_step()
     if (selected_language() == "en") {
       tagList(
-        p(style = "font-size: 18px;", "At the top the current statement and an explanation where necessary is included."),
-        p(style = "font-size: 18px;", "Next you will find four buttons: 'unsure', 'next', 'back', and 'submit'. The 'unsure' button is equivalent to a click on the diagram for the statements you do not know how to allocate. The 'next' button will load the next statement. The 'back' button will load the previous statement. The 'submit' button will submit your answers at the end of the survey."),
-        p(style = "font-size: 18px;", "The table below shows the total amount of statements to be allocated and a status for each statement. The status 'pending' indicates that the allocation for this statement still needs to be done. The status 'done' shows that the allocation of this statement is complete. The 'submit' button will only work if all statements have the status 'done'."),
-        img(src = "www/Introduction/Intro_EN.png", height = "100%", width = "100%"),
+        h2("Practical instructions"),
+        span("Below is an image of what the survey panel will look like once you press the"), strong("Start survey"), span("button below."),
+        tags$br(),
+        p("The top of the panel shows the current statement to be coded with an accompanying explanation where necessary. Below this you will see four buttons:"),
+        HTML("<ul><li> <b>Unsure</b> : This button is to be used for the statements you do not know how to allocate.
+             </li><li> <b>Next</b>: This button will load the next statement.
+             </li><li> <b>Back</b>: This button will load the previous statement.
+             </li><li> <b> Submit</b>: This button will submit your answers at the end of the survey.</li></ul>"),
+        tags$br(),
+        p("The table below these buttons lists all of the statements to be allocated and a status for each statement:"),
+        HTML("<ul><li> <b>Pending</b> : indicates that the allocation for this statement still needs to be done.
+             </li><li> <b>Done</b>: indicates that the allocation of this statement is complete. </li></ul>"),
+        span("Note: The "), strong("Submit"), span("button will only work if all statements have the status"), strong("done"),span("."),
+        tags$br(),
+        tags$br(),
+        img(src = "www/Introduction/Intro_EN.png", height = "80%", width = "80%", style = "box-shadow: 0px 0px 5px black; display: block; margin-left: auto; margin-right: auto;"),
+        tags$br(),
+        tags$br(),
         actionButton("back_intro_button", "Back"),
         actionButton("start_survey_button", "Start Survey")
       )
     } else {
       tagList(
-        p(style = "font-size: 18px;", "En la parte superior se incluye la declaración actual y una explicación donde sea necesario."),
-        p(style = "font-size: 18px;", "A continuación encontrará cuatro botones: 'no seguro', 'siguiente', 'atrás' y 'enviar'. El botón 'no seguro' es equivalente a un clic en el diagrama para las declaraciones que no sabe cómo asignar. El botón 'siguiente' cargará la siguiente declaración. Con el botón 'atrás' se carga la declaración anterior. El botón 'enviar' enviará sus respuestas al final de la encuesta."),
-        p(style = "font-size: 18px;", "La tabla a continuación muestra la cantidad total de declaraciones para asignar y un estado para cada declaración. El estado 'pendiente' indica que la asignación para esta declaración aún necesita ser hecha. El estado 'hecho' muestra que la asignación de esta declaración está completa. El botón 'enviar' solo funcionará si todas las declaraciones tienen el estado 'hecho'."),
-        img(src = "www/Introduction/Intro_ES.png", height = "100%", width = "100%"),
+        h2("Practical instructions"),
+        span("Below is an image of what the survey panel will look like once you press the"), strong("Start survey"), span("button below."),
+        tags$br(),
+        p("The top of the panel shows the current statement to be coded with an accompanying explanation where necessary. Below this you will see four buttons:"),
+        HTML("<ul><li> <b>No seguro</b> : This button is to be used for the statements you do not know how to allocate
+              </li><li> <b>Siguiente</b>: This button will load the next statement. 
+              </li><li> <b>Atrás</b>: This button will load the previous statement. 
+              </li><li> <b>Enviar</b>: This button will submit your answers at the end of the survey.</li></ul>"),
+        tags$br(),
+        p("The table below these buttons lists all of the statements to be allocated and a status for each statement:"),
+        HTML("<ul><li> <b>Pending</b> : indicates that the allocation for this statement still needs to be done.
+             </li><li> <b>Done</b>: indicates that the allocation of this statement is complete. </li></ul>"),
+        span("Note: The "), strong("Submit"), span("button will only work if all statements have the status"), strong("done"), span("."),
+        tags$br(),
+        tags$br(),
+        img(src = "www/Introduction/Intro_ES.png", height = "80%", width = "80%", style = "box-shadow: 0px 0px 5px black; display: block; margin-left: auto; margin-right: auto;"),
+        tags$br(),
+        tags$br(),
         actionButton("back_intro_button", "Atrás"),
         actionButton("start_survey_button", "Comenzar Encuesta")
       )
@@ -213,16 +346,22 @@ server <- function(input, output, session) {
   observeEvent(input$next_button, {
     prog <- progress()
     if (prog$Status[current_statement()] == "selected" || prog$Status[current_statement()] == "seleccionado") {
-      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "done", "hecho")
+      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Done", "Hecho")
       progress(prog)
     }
     new_index <- current_statement() %% nrow(statements()) + 1
     current_statement(new_index)
+    
+    # Scroll the table to the current statement
+    session$sendCustomMessage("scrollToRow", new_index)
   })
   
   observeEvent(input$back_button, {
     new_index <- ifelse(current_statement() > 1, current_statement() - 1, nrow(statements()))
     current_statement(new_index)
+    
+    # Scroll the table to the current statement
+    session$sendCustomMessage("scrollToRow", new_index)
   })
   
   observeEvent(input$unsure_button, {
@@ -242,7 +381,7 @@ server <- function(input, output, session) {
     saved_data(data)
     
     prog <- progress()
-    if (prog$Status[current_statement()] == "pending" || prog$Status[current_statement()] == "pendiente") {
+    if (prog$Status[current_statement()] == "Pending" || prog$Status[current_statement()] == "Pendiente") {
       prog$Status[current_statement()] <- ifelse(selected_language() == "en", "selected", "seleccionado")
     }
     progress(prog)
