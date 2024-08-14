@@ -297,19 +297,19 @@ server <- function(input, output, session) {
       )
     } else {
       tagList(
-        h2("Practical instructions"),
-        span("Below is an image of what the survey panel will look like once you press the"), strong("Start survey"), span("button below."),
+        h2("Instrucciones prácticas"),
+        span("A continuación se muestra una imagen del aspecto que tendrá el panel de la encuesta una vez que pulse el botón"), strong("Comenzar Encuestra"), span("de abajo."),
         tags$br(),
-        p("The top of the panel shows the current statement to be coded with an accompanying explanation where necessary. Below this you will see four buttons:"),
-        HTML("<ul><li> <b>No seguro</b> : This button is to be used for the statements you do not know how to allocate
-              </li><li> <b>Siguiente</b>: This button will load the next statement. 
-              </li><li> <b>Atrás</b>: This button will load the previous statement. 
-              </li><li> <b>Enviar</b>: This button will submit your answers at the end of the survey.</li></ul>"),
+        p("La parte superior del panel muestra la declaración actual que se va a codificar, con una explicación adjunta cuando sea necesario. Debajo, verá cuatro botones:"),
+        HTML("<ul><li> <b>No seguro</b> : Este botón debe utilizarse para las declaraciones que no sabe cómo asignar.
+              </li><li> <b>Siguiente</b>: Este botón cargará la siguiente declaración. 
+              </li><li> <b>Atrás</b>: Este botón cargará la declaración anterior.
+              </li><li> <b>Enviar</b>: Este botón enviará sus respuestas al final de la encuesta.</li></ul>"),
         tags$br(),
-        p("The table below these buttons lists all of the statements to be allocated and a status for each statement:"),
-        HTML("<ul><li> <b>Pending</b> : indicates that the allocation for this statement still needs to be done.
-             </li><li> <b>Done</b>: indicates that the allocation of this statement is complete. </li></ul>"),
-        span("Note: The "), strong("Submit"), span("button will only work if all statements have the status"), strong("done"), span("."),
+        p("La tabla que aparece debajo de estos botones enumera todas las declaraciones que se van a asignar y el estado de cada una de ellas:"),
+        HTML("<ul><li> <b>Pendiente</b> : Indica que aún no se ha realizado la asignación para esta declaración.
+             </li><li> <b>Hecho</b>: Indica que la asignación de esta declaración está completa. </li></ul>"),
+        span("Nota: El "), strong("Enviar"), span("botón sólo funcionará si todas las declaraciones tienen el estado"), strong("hecho"), span("."),
         tags$br(),
         tags$br(),
         img(src = "www/Introduction/Intro_ES.png", height = "80%", width = "80%", style = "box-shadow: 0px 0px 5px black; display: block; margin-left: auto; margin-right: auto;"),
@@ -660,9 +660,3 @@ server <- function(input, output, session) {
 
 # Start the Shiny app
 shinyApp(ui = ui, server = server)
-
-# To run the app, add local IP as host for local hosting
-#shiny::runApp(app)
-
-#})
-
