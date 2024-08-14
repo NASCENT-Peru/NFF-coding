@@ -5,8 +5,6 @@ library(plotly)
 library(dplyr)
 library(lubridate)
 
-#p <- profvis::profvis({
-
 # Set authentication token to be stored in a folder called .secrets
 #options(gargle_oauth_cache = ".secrets")
 
@@ -14,7 +12,7 @@ library(lubridate)
 gs4_auth(cache = ".secrets", email = "nascentperu@gmail.com")
 
 # Google Sheet URL
-ss <- "https://docs.google.com/spreadsheets/d/1alH554dg1gqiNYqIcky7XORxJiSnwzLYsOYFlkDtUdY/edit?usp=sharing"
+ss <- "https://docs.google.com/spreadsheets/d/1bh6OJxxZrVjQGEv_ca76hDPKqgLTfQ3OzSNQA_X1nOs/edit?usp=sharing"
 
 # Function to read statements based on language
 read_statements <- function(language) {
@@ -24,99 +22,7 @@ read_statements <- function(language) {
 }
 
 # Register the www directory
-#addResourcePath("www", "www")
-
-# Create grid points for the ternary plot
-grid_points <- expand.grid(
-  A = seq(0, 30, by = 1),
-  B = seq(0, 30, by = 1),
-  C = seq(0, 30, by = 1)
-)
-grid_points <- grid_points[round(grid_points$A + grid_points$B + grid_points$C, 1) == 30, ]
-
-# Function to format the hover text
-hover_text <- function(df) {
-  df %>%
-    group_by(A, B, C) %>%
-    summarize(Text = paste("Statement", Statement_ID, ": ", Statement, collapse = "<br>"), .groups = 'drop') %>%
-    select(A, B, C, Text)
-}
-
-# Function to generate circle points in barycentric coordinates
-generate_circle_points_barycentric <- function(center, radius, n_points = 100) {
-  angles <- seq(0, 2 * pi, length.out = n_points)
-  lambda <- center[1]
-  mu <- center[2]
-  nu <- center[3]
-
-  circle_points <- data.frame(
-    a = lambda + radius * cos(angles),
-    b = mu + radius * cos(angles + 2 * pi / 3),
-    c = nu + radius * cos(angles - 2 * pi / 3)
-  )
-
-  circle_points <- circle_points[round(circle_points$a + circle_points$b + circle_points$c, 1) == 30, ]
-  return(circle_points)
-}
-
-# Function to calculate linearly increasing opacities
-calculate_opacities_linear <- function(num_circles) {
-  opacities <- numeric(num_circles)
-  T_prev <- 0
-  for (i in 1:num_circles) {
-    T_i <- i / num_circles
-    opacities[i] <- (T_i - T_prev) / (1 - T_prev)
-    T_prev <- T_i
-  }
-  return(opacities)
-}
-
-# Define centers and radius for the circles (in barycentric coordinates)
-centers <- list(
-  c(0, 0, 30),  # Red circle center
-  c(30, 0, 0),  # Green circle center
-  c(0, 30, 0)   # Blue circle center
-)
-radius <- 22  # Radius of the circles
-
-# Define colors with base color and calculate opacities
-num_circles <- 35
-opacities <- calculate_opacities_linear(num_circles)
-colors <- list(
-  list(base_color = 'rgba(219, 114, 114, %.2f)', # Red color
-       opacities = rev(opacities)),  # Reverse to start with highest opacity
-  list(base_color = 'rgba(175, 194, 120, %.2f)', # Green color
-       opacities = rev(opacities)),  # Reverse to start with highest opacity
-  list(base_color = 'rgba(94, 135, 189, %.2f)', # Blue color
-       opacities = rev(opacities))  # Reverse to start with highest opacity
-)
-
-# Generate concentric circles with varying opacities
-concentric_circles <- list()
-for (i in 1:length(centers)) {
-  center <- centers[[i]]
-  color_info <- colors[[i]]
-  for (j in 1:length(color_info$opacities)) {
-    opacity <- color_info$opacities[j]
-    circle_color <- sprintf(color_info$base_color, opacity)
-    points <- generate_circle_points_barycentric(center, radius * j / length(color_info$opacities))
-    concentric_circles[[length(concentric_circles) + 1]] <- list(points = points, color = circle_color)
-  }
-}
-
-# Function to adjust points to respect ternary constraints
-adjust_points <- function(points) {
-  points$a <- pmin(pmax(points$a, 0), 30)
-  points$b <- pmin(pmax(points$b, 0), 30)
-  points$c <- 30 - points$a - points$b
-  return(points)
-}
-
-# Adjust all concentric circle points
-concentric_circles <- lapply(concentric_circles, function(circle) {
-  circle$points <- adjust_points(circle$points)
-  return(circle)
-})
+addResourcePath("www", "www")
 
 # UI for the Shiny app
 ui <- fluidPage(
@@ -127,8 +33,9 @@ ui <- fluidPage(
       selectInput("language", "Language / Idioma", choices = c("English" = "en", "Español" = "es")),
       conditionalPanel(
         condition = "!output.showSurvey && !output.showIntroduction",
-        passwordInput("password", "Password / Contraseña"),
         textInput("participant_name", "Name / Nombre"),
+        checkboxInput("checkbox", 
+                      "Check if you do NOT want your Name to be published on the NASCENT-Peru Website / Marque si NO desea que su nombre se publique en el sitio web de NASCENT-Peru"),
         actionButton("start_button", "Start Introduction / Comenzar Introducción")
       ),
       textOutput("warning"),
@@ -152,7 +59,7 @@ ui <- fluidPage(
         uiOutput("back_button_ui"),
         uiOutput("submit_button_ui"),
         textOutput("warning_submission"),
-        tableOutput("progress_table")
+        div(style = 'overflow-y:scroll; max-height:300px;', tableOutput("progress_table"))
       )
     ),
     mainPanel(
@@ -212,15 +119,7 @@ server <- function(input, output, session) {
   intro_step <- reactiveVal(1)
   
   observeEvent(input$start_button, {
-    if (input$password != "123") {
-      output$warning <- renderText({
-        if (selected_language() == "en") {
-          "Incorrect password. Please try again."
-        } else {
-          "Contraseña incorrecta. Inténtalo de nuevo."
-        }
-      })
-    } else if (input$participant_name == "") {
+    if (input$participant_name == "") {
       output$warning <- renderText({
         if (selected_language() == "en") {
           "Please enter your name to start the survey."
@@ -269,39 +168,23 @@ server <- function(input, output, session) {
   output$intro_content <- renderUI({
     step <- intro_step()
     if (selected_language() == "en") {
-      if (step == 1) {
-        tagList(
-          p(style = "font-size: 18px;", "The diagram on the right shows the Nature Futures Framework. The Nature Futures Framework is a heuristic that captures diverse, positive values of human-nature relationships along three types of specific value perspectives on nature: intrinsic (also known as ‘nature for nature’), instrumental (‘nature for society’), and relational (‘nature as culture/one with nature’) values. Each of the tips of this triangular space represent one of these perspectives."),
-          p(style = "font-size: 18px;", "For each statement of the workshops we want to get the information, where you think it belongs in respect to the three perspectives. The diagram is clickable. A click on the diagram will show a red dot. By clicking somewhere else on the diagram the location of the point can be changed."),
-          actionButton("next_intro_button", "Next")
-        )
-      } else {
-        tagList(
-          p(style = "font-size: 18px;", "At the top the current statement and an explanation where necessary is included."),
-          p(style = "font-size: 18px;", "Next you will find four buttons: 'unsure', 'next', 'back', and 'submit'. The 'unsure' button is equivalent to a click on the diagram for the statements you do not know how to allocate. The 'next' button will load the next statement. The 'back' button will load the previous statement. The 'submit' button will submit your answers at the end of the survey."),
-          p(style = "font-size: 18px;", "The table below shows the total amount of statements to be allocated and a status for each statement. The status 'pending' indicates that the allocation for this statement still needs to be done. The status 'done' shows that the allocation of this statement is complete. The 'submit' button will only work if all statements have the status 'done'."),
-          img(src = "www/Introduction/Intro_en.png", height = "100%", width = "100%"),
-          actionButton("back_intro_button", "Back"),
-          actionButton("start_survey_button", "Start Survey")
-        )
-      }
+      tagList(
+        p(style = "font-size: 18px;", "At the top the current statement and an explanation where necessary is included."),
+        p(style = "font-size: 18px;", "Next you will find four buttons: 'unsure', 'next', 'back', and 'submit'. The 'unsure' button is equivalent to a click on the diagram for the statements you do not know how to allocate. The 'next' button will load the next statement. The 'back' button will load the previous statement. The 'submit' button will submit your answers at the end of the survey."),
+        p(style = "font-size: 18px;", "The table below shows the total amount of statements to be allocated and a status for each statement. The status 'pending' indicates that the allocation for this statement still needs to be done. The status 'done' shows that the allocation of this statement is complete. The 'submit' button will only work if all statements have the status 'done'."),
+        img(src = "www/Introduction/Intro_EN.png", height = "100%", width = "100%"),
+        actionButton("back_intro_button", "Back"),
+        actionButton("start_survey_button", "Start Survey")
+      )
     } else {
-      if (step == 1) {
-        tagList(
-          p(style = "font-size: 18px;", "El diagrama a la derecha muestra el Marco de Futuros de la Naturaleza. El Marco de Futuros de la Naturaleza es una heurística que captura valores diversos y positivos de las relaciones entre humanos y naturaleza a lo largo de tres tipos de perspectivas de valor específicas sobre la naturaleza: intrínseca (también conocida como 'naturaleza por la naturaleza'), instrumental ('naturaleza para la sociedad') y relacional ('naturaleza como cultura/uno con la naturaleza'). Cada uno de los puntos de este espacio triangular representa una de estas perspectivas."),
-          p(style = "font-size: 18px;", "Para cada declaración de los talleres queremos obtener la información, dónde cree que pertenece con respecto a las tres perspectivas. El diagrama es clicable. Un clic en el diagrama mostrará un punto rojo. Al hacer clic en otro lugar del diagrama se puede cambiar la ubicación del punto."),
-          actionButton("next_intro_button", "Siguiente")
-        )
-      } else {
-        tagList(
-          p(style = "font-size: 18px;", "En la parte superior se incluye la declaración actual y una explicación donde sea necesario."),
-          p(style = "font-size: 18px;", "A continuación encontrará cuatro botones: 'no seguro', 'siguiente', 'atrás' y 'enviar'. El botón 'no seguro' es equivalente a un clic en el diagrama para las declaraciones que no sabe cómo asignar. El botón 'siguiente' cargará la siguiente declaración. Con el botón 'atrás' se carga la declaración anterior. El botón 'enviar' enviará sus respuestas al final de la encuesta."),
-          p(style = "font-size: 18px;", "La tabla a continuación muestra la cantidad total de declaraciones para asignar y un estado para cada declaración. El estado 'pendiente' indica que la asignación para esta declaración aún necesita ser hecha. El estado 'hecho' muestra que la asignación de esta declaración está completa. El botón 'enviar' solo funcionará si todas las declaraciones tienen el estado 'hecho'."),
-          img(src = "www/Introduction/Intro_es.png", height = "100%", width = "100%"),
-          actionButton("back_intro_button", "Atrás"),
-          actionButton("start_survey_button", "Comenzar Encuesta")
-        )
-      }
+      tagList(
+        p(style = "font-size: 18px;", "En la parte superior se incluye la declaración actual y una explicación donde sea necesario."),
+        p(style = "font-size: 18px;", "A continuación encontrará cuatro botones: 'no seguro', 'siguiente', 'atrás' y 'enviar'. El botón 'no seguro' es equivalente a un clic en el diagrama para las declaraciones que no sabe cómo asignar. El botón 'siguiente' cargará la siguiente declaración. Con el botón 'atrás' se carga la declaración anterior. El botón 'enviar' enviará sus respuestas al final de la encuesta."),
+        p(style = "font-size: 18px;", "La tabla a continuación muestra la cantidad total de declaraciones para asignar y un estado para cada declaración. El estado 'pendiente' indica que la asignación para esta declaración aún necesita ser hecha. El estado 'hecho' muestra que la asignación de esta declaración está completa. El botón 'enviar' solo funcionará si todas las declaraciones tienen el estado 'hecho'."),
+        img(src = "www/Introduction/Intro_ES.png", height = "100%", width = "100%"),
+        actionButton("back_intro_button", "Atrás"),
+        actionButton("start_survey_button", "Comenzar Encuesta")
+      )
     }
   })
   
@@ -510,7 +393,7 @@ server <- function(input, output, session) {
     if (!is.null(hover_info) && hover_info$curveNumber != 106) {
       point_index <- hover_info$pointNumber + 1  # R indexes start at 1
       coords <- grid_points[point_index, ]
-      hover_coords(coords)
+      hover_coords(coords)  # Store the hover coordinates in reactive value
     }
   })
   
@@ -574,7 +457,7 @@ server <- function(input, output, session) {
   # Submit handler for the Google Sheet
   observeEvent(input$submit_button, {
     prog <- progress()
-    if (all(prog$Status %in% c("done", "hecho"))) {
+    if (all(prog$Status %in% c("done","selected", "hecho", "seleccionado"))) {
       data <- saved_data()
       
       # Check the highest Participant_ID in the sheet
@@ -588,11 +471,15 @@ server <- function(input, output, session) {
       # Add submission time in MEZ (Central European Time)
       data$time <- with_tz(now(), tzone = "Europe/Zurich")
       
-      # Prepare the data to be written
+      # Handle checkbox selection for Name_publ column
+      name_publ_value <- ifelse(input$checkbox, FALSE, TRUE)
+      data$Name_publ <- name_publ_value
+      
+      # Prepare the data to be written in the correct order
       data_to_write <- data %>%
         mutate(Participant_ID = participant_id,
                Participant_Name = input$participant_name) %>%
-        select(Participant_ID, Participant_Name, Statement_ID, Statement, NAT_Coords, SOC_Coords, CUL_Coords, time)
+        select(Participant_ID, Participant_Name, Statement_ID, Statement, NAT_Coords, SOC_Coords, CUL_Coords, time, Name_publ)
       
       # Write the data to the sheet
       sheet_append(ss, data_to_write, sheet = "responses")
