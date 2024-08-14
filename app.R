@@ -116,9 +116,10 @@ concentric_circles <- lapply(concentric_circles, function(circle) {
   return(circle)
 })
 
+
 # UI for the Shiny app
 ui <- fluidPage(
-  titlePanel("Ternary Plot Survey"),
+  titlePanel(title = span(img(src = "NASCENT_logo_horizontal.jpg", height = 50), "Scenario content coding survey")),
   useShinyjs(),
   tags$script(HTML("
     Shiny.addCustomMessageHandler('scrollToRow', function(rowIndex) {
@@ -155,12 +156,15 @@ ui <- fluidPage(
         textOutput("explanation"),
         tags$head(tags$style(HTML("#explanation_title {font-weight: bold;} #explanation {font-size: 18px;}"))),
         br(), br(),
-        uiOutput("unsure_button_ui"),
-        uiOutput("next_button_ui"),
-        uiOutput("back_button_ui"),
-        uiOutput("submit_button_ui"),
+        uiOutput("unsure_button_ui", style = 'display: inline-block; margin-left: 15px;'),
+        uiOutput("next_button_ui", style = 'display: inline-block;'),
+        uiOutput("back_button_ui", style = 'display: inline-block;'),
+        uiOutput("submit_button_ui", style = 'display: inline-block;'),
         textOutput("warning_submission"),
+        br(),
         div(style = 'overflow-y:scroll; max-height:300px;', tableOutput("progress_table"))
+      ),
+      tags$head(tags$style("#intro_content{font-size: 18px;}")
       )
     ),
     mainPanel(
@@ -270,19 +274,47 @@ server <- function(input, output, session) {
     step <- intro_step()
     if (selected_language() == "en") {
       tagList(
-        p(style = "font-size: 18px;", "At the top the current statement and an explanation where necessary is included."),
-        p(style = "font-size: 18px;", "Next you will find four buttons: 'unsure', 'next', 'back', and 'submit'. The 'unsure' button is equivalent to a click on the diagram for the statements you do not know how to allocate. The 'next' button will load the next statement. The 'back' button will load the previous statement. The 'submit' button will submit your answers at the end of the survey."),
-        p(style = "font-size: 18px;", "The table below shows the total amount of statements to be allocated and a status for each statement. The status 'pending' indicates that the allocation for this statement still needs to be done. The status 'done' shows that the allocation of this statement is complete. The 'submit' button will only work if all statements have the status 'done'."),
-        img(src = "www/Introduction/Intro_EN.png", height = "100%", width = "100%"),
+        h2("Practical instructions"),
+        span("Below is an image of what the survey panel will look like once you press the"), strong("Start survey"), span("button below."),
+        tags$br(),
+        p("The top of the panel shows the current statement to be coded with an accompanying explanation where necessary. Below this you will see four buttons:"),
+        HTML("<ul><li> <b>Unsure</b> : This button is to be used for the statements you do not know how to allocate.
+             </li><li> <b>Next</b>: This button will load the next statement.
+             </li><li> <b>Back</b>: This button will load the previous statement.
+             </li><li> <b> Submit</b>: This button will submit your answers at the end of the survey.</li></ul>"),
+        tags$br(),
+        p("The table below these buttons lists all of the statements to be allocated and a status for each statement:"),
+        HTML("<ul><li> <b>Pending</b> : indicates that the allocation for this statement still needs to be done.
+             </li><li> <b>Done</b>: indicates that the allocation of this statement is complete. </li></ul>"),
+        span("Note: The "), strong("Submit"), span("button will only work if all statements have the status"), strong("done"),span("."),
+        tags$br(),
+        tags$br(),
+        img(src = "www/Introduction/Intro_EN.png", height = "80%", width = "80%", style = "box-shadow: 0px 0px 5px black; display: block; margin-left: auto; margin-right: auto;"),
+        tags$br(),
+        tags$br(),
         actionButton("back_intro_button", "Back"),
         actionButton("start_survey_button", "Start Survey")
       )
     } else {
       tagList(
-        p(style = "font-size: 18px;", "En la parte superior se incluye la declaración actual y una explicación donde sea necesario."),
-        p(style = "font-size: 18px;", "A continuación encontrará cuatro botones: 'no seguro', 'siguiente', 'atrás' y 'enviar'. El botón 'no seguro' es equivalente a un clic en el diagrama para las declaraciones que no sabe cómo asignar. El botón 'siguiente' cargará la siguiente declaración. Con el botón 'atrás' se carga la declaración anterior. El botón 'enviar' enviará sus respuestas al final de la encuesta."),
-        p(style = "font-size: 18px;", "La tabla a continuación muestra la cantidad total de declaraciones para asignar y un estado para cada declaración. El estado 'pendiente' indica que la asignación para esta declaración aún necesita ser hecha. El estado 'hecho' muestra que la asignación de esta declaración está completa. El botón 'enviar' solo funcionará si todas las declaraciones tienen el estado 'hecho'."),
-        img(src = "www/Introduction/Intro_ES.png", height = "100%", width = "100%"),
+        h2("Instrucciones prácticas"),
+        span("A continuación se muestra una imagen del aspecto que tendrá el panel de la encuesta una vez que pulse el botón"), strong("Comenzar Encuestra"), span("de abajo."),
+        tags$br(),
+        p("La parte superior del panel muestra la declaración actual que se va a codificar, con una explicación adjunta cuando sea necesario. Debajo, verá cuatro botones:"),
+        HTML("<ul><li> <b>No seguro</b> : Este botón debe utilizarse para las declaraciones que no sabe cómo asignar.
+              </li><li> <b>Siguiente</b>: Este botón cargará la siguiente declaración. 
+              </li><li> <b>Atrás</b>: Este botón cargará la declaración anterior.
+              </li><li> <b>Enviar</b>: Este botón enviará sus respuestas al final de la encuesta.</li></ul>"),
+        tags$br(),
+        p("La tabla que aparece debajo de estos botones enumera todas las declaraciones que se van a asignar y el estado de cada una de ellas:"),
+        HTML("<ul><li> <b>Pendiente</b> : Indica que aún no se ha realizado la asignación para esta declaración.
+             </li><li> <b>Hecho</b>: Indica que la asignación de esta declaración está completa. </li></ul>"),
+        span("Nota: El "), strong("Enviar"), span("botón sólo funcionará si todas las declaraciones tienen el estado"), strong("hecho"), span("."),
+        tags$br(),
+        tags$br(),
+        img(src = "www/Introduction/Intro_ES.png", height = "80%", width = "80%", style = "box-shadow: 0px 0px 5px black; display: block; margin-left: auto; margin-right: auto;"),
+        tags$br(),
+        tags$br(),
         actionButton("back_intro_button", "Atrás"),
         actionButton("start_survey_button", "Comenzar Encuesta")
       )
@@ -314,7 +346,7 @@ server <- function(input, output, session) {
   observeEvent(input$next_button, {
     prog <- progress()
     if (prog$Status[current_statement()] == "selected" || prog$Status[current_statement()] == "seleccionado") {
-      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "done", "hecho")
+      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Done", "Hecho")
       progress(prog)
     }
     new_index <- current_statement() %% nrow(statements()) + 1
@@ -349,7 +381,7 @@ server <- function(input, output, session) {
     saved_data(data)
     
     prog <- progress()
-    if (prog$Status[current_statement()] == "pending" || prog$Status[current_statement()] == "pendiente") {
+    if (prog$Status[current_statement()] == "Pending" || prog$Status[current_statement()] == "Pendiente") {
       prog$Status[current_statement()] <- ifelse(selected_language() == "en", "selected", "seleccionado")
     }
     progress(prog)
