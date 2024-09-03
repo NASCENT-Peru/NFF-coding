@@ -207,7 +207,7 @@ server <- function(input, output, session) {
   # Reactive value to track progress
   progress <- reactiveVal(data.frame(
     Question = 1,
-    Status = "pending",
+    Status = "Pending",
     stringsAsFactors = FALSE
   ))
   
@@ -215,7 +215,7 @@ server <- function(input, output, session) {
     statements_data <- statements()
     progress(data.frame(
       Question = 1:nrow(statements_data),
-      Status = rep("pending", nrow(statements_data)),
+      Status = rep("Pending", nrow(statements_data)),
       stringsAsFactors = FALSE
     ))
   })
@@ -328,8 +328,8 @@ server <- function(input, output, session) {
       Statement_ID = statements()$Statement_ID,
       Statement = statements()$Statement,
       NAT_Coords = rep(NA, nrow(statements())),
-      SOC_Coords = rep(NA, nrow(statements())),
       CUL_Coords = rep(NA, nrow(statements())),
+      SOC_Coords = rep(NA, nrow(statements())),
       time = rep(NA, nrow(statements())),
       stringsAsFactors = FALSE
     )
@@ -345,7 +345,7 @@ server <- function(input, output, session) {
   # Display the next statement
   observeEvent(input$next_button, {
     prog <- progress()
-    if (prog$Status[current_statement()] == "selected" || prog$Status[current_statement()] == "seleccionado") {
+    if (prog$Status[current_statement()] == "Selected" || prog$Status[current_statement()] == "Seleccionado") {
       prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Done", "Hecho")
       progress(prog)
     }
@@ -382,7 +382,7 @@ server <- function(input, output, session) {
     
     prog <- progress()
     if (prog$Status[current_statement()] == "Pending" || prog$Status[current_statement()] == "Pendiente") {
-      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "selected", "seleccionado")
+      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Selected", "Seleccionado")
     }
     progress(prog)
   })
@@ -436,8 +436,8 @@ server <- function(input, output, session) {
         ternary = list(
           sum = 30,
           aaxis = list(title = "", min = 0, max = 30, tickvals = FALSE),
-          baxis = list(title = ifelse(selected_language() == "en", "<b>Nature for Society</b><br>Nature’s benefits to people<br>Ecosystem services", "<b>Naturaleza para la Sociedad</b><br>Beneficios de la naturaleza para las personas<br>Servicios ecosistémicos"), min = 0, max = 30, tickvals = FALSE, titlefont = list(size = 14)),
-          caxis = list(title = ifelse(selected_language() == "en", "<b>Nature as Culture</b><br>Living in harmony<br>People one with nature", "<b>Naturaleza como Cultura</b><br>Viviendo en armonía<br>Personas una con la naturaleza"), min = 0, max = 30, tickvals = FALSE, titlefont = list(size = 14)),
+          baxis = list(title = ifelse(selected_language() == "en", "<b>Nature as Culture</b><br>Living in harmony<br>People one with nature", "<b>Naturaleza como Cultura</b><br>Viviendo en armonía<br>Personas una con la naturaleza"), min = 0, max = 30, tickvals = FALSE, titlefont = list(size = 14)),
+          caxis = list(title = ifelse(selected_language() == "en", "<b>Nature for Society</b><br>Nature’s benefits to people<br>Ecosystem services", "<b>Naturaleza para la Sociedad</b><br>Beneficios de la naturaleza para las personas<br>Servicios ecosistémicos"), min = 0, max = 30, tickvals = FALSE, titlefont = list(size = 14)),
           bgcolor = 'white',
           showgrid = FALSE
         ),
@@ -586,8 +586,8 @@ server <- function(input, output, session) {
       saved_data(data)
       
       prog <- progress()
-      if (prog$Status[current_statement()] == "pending" || prog$Status[current_statement()] == "pendiente") {
-        prog$Status[current_statement()] <- ifelse(selected_language() == "en", "selected", "seleccionado")
+      if (prog$Status[current_statement()] == "Pending" || prog$Status[current_statement()] == "Pendiente") {
+        prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Selected", "Seleccionado")
       }
       progress(prog)
     }
@@ -596,7 +596,7 @@ server <- function(input, output, session) {
   # Submit handler for the Google Sheet
   observeEvent(input$submit_button, {
     prog <- progress()
-    if (all(prog$Status %in% c("done","selected", "hecho", "seleccionado"))) {
+    if (all(prog$Status %in% c("Done","Selected", "Hecho", "Seleccionado"))) {
       data <- saved_data()
       
       # Check the highest Participant_ID in the sheet
@@ -618,7 +618,7 @@ server <- function(input, output, session) {
       data_to_write <- data %>%
         mutate(Participant_ID = participant_id,
                Participant_Name = input$participant_name) %>%
-        select(Participant_ID, Participant_Name, Statement_ID, Statement, NAT_Coords, SOC_Coords, CUL_Coords, time, Name_publ)
+        select(Participant_ID, Participant_Name, Statement_ID, Statement, NAT_Coords, CUL_Coords, SOC_Coords, time, Name_publ)
       
       # Write the data to the sheet
       sheet_append(ss, data_to_write, sheet = "responses")
@@ -643,9 +643,9 @@ server <- function(input, output, session) {
   
   output$progress_table <- renderTable({
     prog <- progress()
-    prog$Status <- ifelse(prog$Status == "pending", ifelse(selected_language() == "en", "Pending", "Pendiente"), prog$Status)
-    prog$Status <- ifelse(prog$Status == "done", ifelse(selected_language() == "en", "Done", "Hecho"), prog$Status)
-    prog$Status <- ifelse(prog$Status == "selected", ifelse(selected_language() == "en", "Selected", "Seleccionado"), prog$Status)
+    prog$Status <- ifelse(prog$Status == "Pending", ifelse(selected_language() == "en", "Pending", "Pendiente"), prog$Status)
+    prog$Status <- ifelse(prog$Status == "Done", ifelse(selected_language() == "en", "Done", "Hecho"), prog$Status)
+    prog$Status <- ifelse(prog$Status == "Selected", ifelse(selected_language() == "en", "Selected", "Seleccionado"), prog$Status)
     prog$Status <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Status, "</b>"), prog$Status)
     prog$Question <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Question, "</b>"), prog$Question)
     prog <- prog[, c("Question", "Status")]
