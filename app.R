@@ -121,30 +121,20 @@ concentric_circles <- lapply(concentric_circles, function(circle) {
 ui <- fluidPage(
   titlePanel(title = span(img(src = "NASCENT_logo_horizontal.jpg", height = 50), "Scenario content coding survey")),
   useShinyjs(),
-  tags$script(HTML("
-    Shiny.addCustomMessageHandler('scrollToRow', function(rowIndex) {
-      var table = document.getElementById('progress_table');
-      var rows = table.getElementsByTagName('tr');
-      if (rows[rowIndex]) {
-        rows[rowIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    });
-  ")),
+  
   sidebarLayout(
     sidebarPanel(
       selectInput("language", "Language / Idioma", choices = c("English" = "en", "Español" = "es")),
+      
+      # Initial panel to capture name and start the introduction
       conditionalPanel(
-        condition = "!output.showSurvey && !output.showIntroduction",
+        condition = "!output.showSurvey && !output.showSubmissionInProgress && !output.showThankYou && !output.showIntroduction",
         textInput("participant_name", "Name / Nombre"),
-        checkboxInput("checkbox", 
-                      "Check if you do NOT want your Name to be published on the NASCENT-Peru Website / Marque si NO desea que su nombre se publique en el sitio web de NASCENT-Peru"),
-        actionButton("start_button", "Start Introduction / Comenzar Introducción")
+        checkboxInput("checkbox", "Check if you do NOT want your Name to be published on the NASCENT-Peru Website / Marque si NO desea que su nombre se publique en el sitio web de NASCENT-Peru"),
+        actionButton("start_button", "Start Introduction / Comenzar Introducción"),
+        textOutput("warning")
       ),
-      textOutput("warning"),
-      conditionalPanel(
-        condition = "output.showIntroduction",
-        uiOutput("intro_content")
-      ),
+      
       conditionalPanel(
         condition = "output.showSurvey",
         br(), br(),
@@ -164,21 +154,44 @@ ui <- fluidPage(
         br(),
         div(style = 'overflow-y:scroll; max-height:300px;', tableOutput("progress_table"))
       ),
-      tags$head(tags$style("#intro_content{font-size: 18px;}")
+      
+      # Panel to show submission in progress
+      conditionalPanel(
+        condition = "output.showSubmissionInProgress",
+        h3(textOutput("submit_progress_message"))
+      ),
+      
+      # Panel to show the thank-you message after submission
+      conditionalPanel(
+        condition = "output.showThankYou",
+        h3(textOutput("thank_you_message"))
+      ),
+      
+      # Conditional panel for introduction content
+      conditionalPanel(
+        condition = "output.showIntroduction",
+        uiOutput("intro_content")
       )
     ),
+    
     mainPanel(
-      tags$style(type = "text/css", "#ternaryPlot {margin-top: 50px;}"),
       plotlyOutput("ternaryPlot", height = "750px")
     )
   )
 )
 
+
+
+
+
 # Server for the Shiny app
 server <- function(input, output, session) {
-  
   # Reactive value to store the selected language
   selected_language <- reactive(input$language)
+  
+  # Reactive values to control the panel visibility
+  showSubmissionInProgress <- reactiveVal(FALSE)
+  showThankYou <- reactiveVal(FALSE)
   
   # Reactive value to store the statements
   statements <- reactive({
@@ -270,6 +283,16 @@ server <- function(input, output, session) {
   
   outputOptions(output, "showSurvey", suspendWhenHidden = FALSE)
   
+  output$showSubmissionInProgress <- reactive({
+    showSubmissionInProgress()
+  })
+  outputOptions(output, "showSubmissionInProgress", suspendWhenHidden = FALSE)
+  
+  output$showThankYou <- reactive({
+    showThankYou()
+  })
+  outputOptions(output, "showThankYou", suspendWhenHidden = FALSE)
+  
   output$intro_content <- renderUI({
     step <- intro_step()
     if (selected_language() == "en") {
@@ -286,7 +309,7 @@ server <- function(input, output, session) {
         p("The table below these buttons lists all of the statements to be allocated and a status for each statement:"),
         HTML("<ul><li> <b>Pending</b> : indicates that the allocation for this statement still needs to be done.
              </li><li> <b>Done</b>: indicates that the allocation of this statement is complete. </li></ul>"),
-        span("Note: The "), strong("Submit"), span("button will only work if all statements have the status"), strong("done"),span("."),
+        span("Note: The "), strong("Submit"), span("button will only work if all statements have the status"), strong("done"), span("."),
         tags$br(),
         tags$br(),
         img(src = "www/Introduction/Intro_EN.png", height = "80%", width = "80%", style = "box-shadow: 0px 0px 5px black; display: block; margin-left: auto; margin-right: auto;"),
@@ -302,7 +325,7 @@ server <- function(input, output, session) {
         tags$br(),
         p("La parte superior del panel muestra la declaración actual que se va a codificar, con una explicación adjunta cuando sea necesario. Debajo, verá cuatro botones:"),
         HTML("<ul><li> <b>No seguro</b> : Este botón debe utilizarse para las declaraciones que no sabe cómo asignar.
-              </li><li> <b>Siguiente</b>: Este botón cargará la siguiente declaración. 
+              </li><li> <b>Siguiente</b>: Este botón cargará la siguiente declaración.
               </li><li> <b>Atrás</b>: Este botón cargará la declaración anterior.
               </li><li> <b>Enviar</b>: Este botón enviará sus respuestas al final de la encuesta.</li></ul>"),
         tags$br(),
@@ -427,70 +450,88 @@ server <- function(input, output, session) {
     actionButton("submit_button", ifelse(selected_language() == "en", "Submit", "Enviar"))
   })
   
+  # Render the submit progress message
+  output$submit_progress_message <- renderText({
+    if (selected_language() == "en") {
+      "Your submission is in progress, please wait."
+    } else {
+      "Su envío está en progreso, por favor espere."
+    }
+  })
+  
+  # Render the thank-you message
+  output$thank_you_message <- renderText({
+    if (selected_language() == "en") {
+      "Thank you for taking part in this survey. Your answers will help us greatly. You can close the application now."
+    } else {
+      "Gracias por participar en esta encuesta. Sus respuestas nos ayudarán enormemente. Puede cerrar la aplicación ahora."
+    }
+  })
+  
   # Create the ternary plot function
   create_ternary_plot <- function(selected_points_df) {
     plot <- plot_ly(source = "ternaryPlot") %>%
       layout(
         showlegend = FALSE,
-        hovermode = 'closest',  # Ensure closest point hovermode
+        hovermode = "closest", # Ensure closest point hovermode
         ternary = list(
           sum = 30,
           aaxis = list(title = "", min = 0, max = 30, tickvals = FALSE),
           baxis = list(title = ifelse(selected_language() == "en", "<b>Nature as Culture</b><br>Living in harmony<br>People one with nature", "<b>Naturaleza como Cultura</b><br>Viviendo en armonía<br>Personas una con la naturaleza"), min = 0, max = 30, tickvals = FALSE, titlefont = list(size = 14)),
           caxis = list(title = ifelse(selected_language() == "en", "<b>Nature for Society</b><br>Nature’s benefits to people<br>Ecosystem services", "<b>Naturaleza para la Sociedad</b><br>Beneficios de la naturaleza para las personas<br>Servicios ecosistémicos"), min = 0, max = 30, tickvals = FALSE, titlefont = list(size = 14)),
-          bgcolor = 'white',
+          bgcolor = "white",
           showgrid = FALSE
         ),
         annotations = list(
           list(
             x = 0.5, y = 1, text = ifelse(selected_language() == "en", "<b>Nature for Nature</b><br>Intrinsic value of nature<br>Space allocated for nature", "<b>Naturaleza por Naturaleza</b><br>Valor intrínseco de la naturaleza<br>Espacio asignado para la naturaleza"),
-            showarrow = FALSE, xref = 'paper', yref = 'paper', xanchor = 'center', yanchor = 'bottom',
+            showarrow = FALSE, xref = "paper", yref = "paper", xanchor = "center", yanchor = "bottom",
             font = list(size = 14)
           )
         ),
         margin = list(t = 100, b = 100, l = 50, r = 50)
       ) %>%
-      config(displayModeBar = FALSE)  # Disable plotly mode bar
+      config(displayModeBar = FALSE) # Disable plotly mode bar
     
     # Add concentric circles with varying opacities
     for (circle in concentric_circles) {
       plot <- plot %>%
         add_trace(
-          type = 'scatterternary',
-          mode = 'none',
+          type = "scatterternary",
+          mode = "none",
           a = circle$points$a,
           b = circle$points$b,
           c = circle$points$c,
-          fill = 'toself',
+          fill = "toself",
           fillcolor = circle$color,
           showlegend = FALSE,
-          hoverinfo = 'none'  # Disable hover info for circles
+          hoverinfo = "none" # Disable hover info for circles
         )
     }
     
     # Add grid points with invisible markers
     plot <- plot %>% add_trace(
-      type = 'scatterternary',
-      mode = 'markers',
+      type = "scatterternary",
+      mode = "markers",
       a = grid_points$A,
       b = grid_points$B,
       c = grid_points$C,
-      hoverinfo = 'none',  # Disable hover info for grid points
-      marker = list(opacity = 0, size = 5)  # Set opacity to 0 to make markers invisible
+      hoverinfo = "none", # Disable hover info for grid points
+      marker = list(opacity = 0, size = 5) # Set opacity to 0 to make markers invisible
     )
     
     # Add selected points
     if (!is.null(selected_points_df) && nrow(selected_points_df) > 0) {
       hover_data <- hover_text(selected_points_df)
       plot <- plot %>% add_trace(
-        type = 'scatterternary',
-        mode = 'markers',
+        type = "scatterternary",
+        mode = "markers",
         a = hover_data$A,
         b = hover_data$B,
         c = hover_data$C,
-        marker = list(size = 10, color = 'red', opacity = 0.8),
+        marker = list(size = 10, color = "red", opacity = 0.8),
         text = hover_data$Text,
-        hoverinfo = 'text',
+        hoverinfo = "text",
         showlegend = FALSE
       )
     }
@@ -513,14 +554,14 @@ server <- function(input, output, session) {
     if (nrow(selected_points_df) > 0) {
       hover_data <- hover_text(selected_points_df)
       plotlyProxyInvoke(proxy, "addTraces", list(
-        type = 'scatterternary',
-        mode = 'markers',
+        type = "scatterternary",
+        mode = "markers",
         a = hover_data$A,
         b = hover_data$B,
         c = hover_data$C,
-        marker = list(size = 10, color = 'red', opacity = 0.8),
+        marker = list(size = 10, color = "red", opacity = 0.8),
         text = hover_data$Text,
-        hoverinfo = 'text',
+        hoverinfo = "text",
         showlegend = FALSE
       ))
     }
@@ -530,9 +571,9 @@ server <- function(input, output, session) {
   observeEvent(event_data("plotly_hover", source = "ternaryPlot"), {
     hover_info <- event_data("plotly_hover", source = "ternaryPlot")
     if (!is.null(hover_info) && hover_info$curveNumber != 106) {
-      point_index <- hover_info$pointNumber + 1  # R indexes start at 1
+      point_index <- hover_info$pointNumber + 1 # R indexes start at 1
       coords <- grid_points[point_index, ]
-      hover_coords(coords)  # Store the hover coordinates in reactive value
+      hover_coords(coords) # Store the hover coordinates in reactive value
     }
   })
   
@@ -548,7 +589,7 @@ server <- function(input, output, session) {
         }
       } else {
         # Capture the click data
-        point_index <- click_data$pointNumber + 1  # R indexes start at 1
+        point_index <- click_data$pointNumber + 1 # R indexes start at 1
         coords <- grid_points[point_index, ]
         
         # Update the last valid coordinates
@@ -567,16 +608,16 @@ server <- function(input, output, session) {
       # Update the plot immediately
       hover_data <- hover_text(selected_points_df)
       proxy <- plotlyProxy("ternaryPlot", session)
-      plotlyProxyInvoke(proxy, "deleteTraces", list(1))  # Remove existing points trace
+      plotlyProxyInvoke(proxy, "deleteTraces", list(1)) # Remove existing points trace
       plotlyProxyInvoke(proxy, "addTraces", list(
-        type = 'scatterternary',
-        mode = 'markers',
+        type = "scatterternary",
+        mode = "markers",
         a = hover_data$A,
         b = hover_data$B,
         c = hover_data$C,
-        marker = list(size = 10, color = 'red', opacity = 0.8),
+        marker = list(size = 10, color = "red", opacity = 0.8),
         text = hover_data$Text,
-        hoverinfo = 'text',
+        hoverinfo = "text",
         showlegend = FALSE
       ))
       
@@ -595,67 +636,82 @@ server <- function(input, output, session) {
   
   # Submit handler for the Google Sheet
   observeEvent(input$submit_button, {
-    prog <- progress()
-    if (all(prog$Status %in% c("Done","Selected", "Hecho", "Seleccionado"))) {
-      data <- saved_data()
-      
-      # Check the highest Participant_ID in the sheet
-      existing_data <- read_sheet(ss, sheet = "responses")
-      if(nrow(existing_data) == 0) {
-        participant_id <- 1
-      } else {
-        participant_id <- max(existing_data$Participant_ID, na.rm = TRUE) + 1
-      }
-      
-      # Add submission time in MEZ (Central European Time)
-      data$time <- with_tz(now(), tzone = "Europe/Zurich")
-      
-      # Handle checkbox selection for Name_publ column
-      name_publ_value <- ifelse(input$checkbox, FALSE, TRUE)
-      data$Name_publ <- name_publ_value
-      
-      # Prepare the data to be written in the correct order
-      data_to_write <- data %>%
-        mutate(Participant_ID = participant_id,
-               Participant_Name = input$participant_name) %>%
-        select(Participant_ID, Participant_Name, Statement_ID, Statement, NAT_Coords, CUL_Coords, SOC_Coords, time, Name_publ)
-      
-      # Write the data to the sheet
-      sheet_append(ss, data_to_write, sheet = "responses")
-      
-      # Clear the selected points and saved data
-      selected_points(data.frame(Statement_ID = integer(), A = numeric(), B = numeric(), C = numeric(), Statement = character(), stringsAsFactors = FALSE))
-      saved_data(initial_data())
-      
-      # Close the session after successful submission
-      session$close()
-    } else {
-      output$warning_submission <- renderText({
-        if (selected_language() == "en") {
-          "Not all statements are done."
+    # First, hide the survey panel and show the "submission in progress" message
+    show_survey(FALSE)  # Hide survey content
+    showSubmissionInProgress(TRUE)  # Show "submission in progress" message
+    
+    # Use shinyjs::delay to delay further actions and allow UI update
+    shinyjs::delay(100, {
+      # Proceed with the data submission
+      prog <- progress()
+      if (all(prog$Status %in% c("Done", "Selected", "Hecho", "Seleccionado"))) {
+        
+        data <- saved_data()
+        
+        # Check the highest Participant_ID in the sheet
+        existing_data <- read_sheet(ss, sheet = "responses")
+        if (nrow(existing_data) == 0) {
+          participant_id <- 1
         } else {
-          "No todas las declaraciones están completas."
+          participant_id <- max(existing_data$Participant_ID, na.rm = TRUE) + 1
         }
-      })
-    }
+        
+        # Add submission time in Central European Time (MEZ)
+        data$time <- with_tz(now(), tzone = "Europe/Zurich")
+        
+        # Handle checkbox selection for Name_publ column
+        name_publ_value <- ifelse(input$checkbox, FALSE, TRUE)
+        data$Name_publ <- name_publ_value
+        
+        # Prepare the data to be written in the correct order
+        data_to_write <- data %>%
+          mutate(Participant_ID = participant_id,
+                 Participant_Name = input$participant_name) %>%
+          select(Participant_ID, Participant_Name, Statement_ID, Statement, NAT_Coords, CUL_Coords, SOC_Coords, time, Name_publ)
+        
+        # Write the data to the Google Sheet
+        sheet_append(ss, data_to_write, sheet = "responses")
+        
+        # Once submission is complete, hide the submission in progress message and show the thank-you message
+        showSubmissionInProgress(FALSE)  # Hide "submission in progress" message
+        showThankYou(TRUE)  # Show "thank you" message
+        
+        # Clear the selected points and saved data
+        selected_points(data.frame(Statement_ID = integer(), A = numeric(), B = numeric(), C = numeric(), Statement = character(), stringsAsFactors = FALSE))
+        saved_data(initial_data())
+        
+      } else {
+        # Handle case when not all statements are completed
+        output$warning_submission <- renderText({
+          if (selected_language() == "en") {
+            "Not all statements are done."
+          } else {
+            "No todas las declaraciones están completas."
+          }
+        })
+      }
+    })
   })
   
   
-  output$progress_table <- renderTable({
-    prog <- progress()
-    prog$Status <- ifelse(prog$Status == "Pending", ifelse(selected_language() == "en", "Pending", "Pendiente"), prog$Status)
-    prog$Status <- ifelse(prog$Status == "Done", ifelse(selected_language() == "en", "Done", "Hecho"), prog$Status)
-    prog$Status <- ifelse(prog$Status == "Selected", ifelse(selected_language() == "en", "Selected", "Seleccionado"), prog$Status)
-    prog$Status <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Status, "</b>"), prog$Status)
-    prog$Question <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Question, "</b>"), prog$Question)
-    prog <- prog[, c("Question", "Status")]
-    if (selected_language() == "en") {
-      colnames(prog) <- c("Question", "Status")
-    } else {
-      colnames(prog) <- c("Declaración", "Estado")
-    }
-    prog
-  }, sanitize.text.function = identity)
+  output$progress_table <- renderTable(
+    {
+      prog <- progress()
+      prog$Status <- ifelse(prog$Status == "Pending", ifelse(selected_language() == "en", "Pending", "Pendiente"), prog$Status)
+      prog$Status <- ifelse(prog$Status == "Done", ifelse(selected_language() == "en", "Done", "Hecho"), prog$Status)
+      prog$Status <- ifelse(prog$Status == "Selected", ifelse(selected_language() == "en", "Selected", "Seleccionado"), prog$Status)
+      prog$Status <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Status, "</b>"), prog$Status)
+      prog$Question <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Question, "</b>"), prog$Question)
+      prog <- prog[, c("Question", "Status")]
+      if (selected_language() == "en") {
+        colnames(prog) <- c("Question", "Status")
+      } else {
+        colnames(prog) <- c("Declaración", "Estado")
+      }
+      prog
+    },
+    sanitize.text.function = identity
+  )
 }
 
 # Start the Shiny app
