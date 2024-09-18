@@ -5,118 +5,6 @@ library(plotly)
 library(dplyr)
 library(lubridate)
 
-# Set authentication token to be stored in a folder called .secrets
-options(gargle_oauth_cache = ".secrets")
-
-# Authenticate using the cached token
-gs4_auth(cache = ".secrets", email = "nascentperu@gmail.com")
-
-# Google Sheet URL
-ss <- "https://docs.google.com/spreadsheets/d/1bh6OJxxZrVjQGEv_ca76hDPKqgLTfQ3OzSNQA_X1nOs/edit?usp=sharing"
-
-# Function to read statements based on language
-read_statements <- function(language) {
-  sheet_name <- paste0("statements_", language)
-  read_sheet(ss, sheet = sheet_name) %>%
-    select(Statement_ID, Statement, Explanation)
-}
-
-# Register the www directory
-addResourcePath("www", "www")
-
-# Create grid points for the ternary plot
-grid_points <- expand.grid(
-  A = seq(0, 30, by = 1),
-  B = seq(0, 30, by = 1),
-  C = seq(0, 30, by = 1)
-)
-grid_points <- grid_points[round(grid_points$A + grid_points$B + grid_points$C, 1) == 30, ]
-
-# Function to format the hover text
-hover_text <- function(df) {
-  df %>%
-    group_by(A, B, C) %>%
-    summarize(Text = paste("Statement", Statement_ID, ": ", Statement, collapse = "<br>"), .groups = 'drop') %>%
-    select(A, B, C, Text)
-}
-
-# Function to generate circle points in barycentric coordinates
-generate_circle_points_barycentric <- function(center, radius, n_points = 100) {
-  angles <- seq(0, 2 * pi, length.out = n_points)
-  lambda <- center[1]
-  mu <- center[2]
-  nu <- center[3]
-  
-  circle_points <- data.frame(
-    a = lambda + radius * cos(angles),
-    b = mu + radius * cos(angles + 2 * pi / 3),
-    c = nu + radius * cos(angles - 2 * pi / 3)
-  )
-  
-  circle_points <- circle_points[round(circle_points$a + circle_points$b + circle_points$c, 1) == 30, ]
-  return(circle_points)
-}
-
-# Function to calculate linearly increasing opacities
-calculate_opacities_linear <- function(num_circles) {
-  opacities <- numeric(num_circles)
-  T_prev <- 0
-  for (i in 1:num_circles) {
-    T_i <- i / num_circles
-    opacities[i] <- (T_i - T_prev) / (1 - T_prev)
-    T_prev <- T_i
-  }
-  return(opacities)
-}
-
-# Define centers and radius for the circles (in barycentric coordinates)
-centers <- list(
-  c(0, 0, 30),  # Red circle center
-  c(30, 0, 0),  # Green circle center
-  c(0, 30, 0)   # Blue circle center
-)
-radius <- 22  # Radius of the circles
-
-# Define colors with base color and calculate opacities
-num_circles <- 35
-opacities <- calculate_opacities_linear(num_circles)
-colors <- list(
-  list(base_color = 'rgba(219, 114, 114, %.2f)', # Red color
-       opacities = rev(opacities)),  # Reverse to start with highest opacity
-  list(base_color = 'rgba(175, 194, 120, %.2f)', # Green color
-       opacities = rev(opacities)),  # Reverse to start with highest opacity
-  list(base_color = 'rgba(94, 135, 189, %.2f)', # Blue color
-       opacities = rev(opacities))  # Reverse to start with highest opacity
-)
-
-# Generate concentric circles with varying opacities
-concentric_circles <- list()
-for (i in 1:length(centers)) {
-  center <- centers[[i]]
-  color_info <- colors[[i]]
-  for (j in 1:length(color_info$opacities)) {
-    opacity <- color_info$opacities[j]
-    circle_color <- sprintf(color_info$base_color, opacity)
-    points <- generate_circle_points_barycentric(center, radius * j / length(color_info$opacities))
-    concentric_circles[[length(concentric_circles) + 1]] <- list(points = points, color = circle_color)
-  }
-}
-
-# Function to adjust points to respect ternary constraints
-adjust_points <- function(points) {
-  points$a <- pmin(pmax(points$a, 0), 30)
-  points$b <- pmin(pmax(points$b, 0), 30)
-  points$c <- 30 - points$a - points$b
-  return(points)
-}
-
-# Adjust all concentric circle points
-concentric_circles <- lapply(concentric_circles, function(circle) {
-  circle$points <- adjust_points(circle$points)
-  return(circle)
-})
-
-
 # UI for the Shiny app
 ui <- fluidPage(
   titlePanel(title = span(img(src = "NASCENT_logo_horizontal.jpg", height = 50), "Scenario content coding survey")),
@@ -180,36 +68,41 @@ ui <- fluidPage(
   )
 )
 
-
-
-
-
 # Server for the Shiny app
 server <- function(input, output, session) {
+  # Set authentication token to be stored in a folder called .secrets
+  options(gargle_oauth_cache = ".secrets")
+  
+  # Authenticate using the cached token
+  gs4_auth(cache = ".secrets", email = "nascentperu@gmail.com")
+  
+  # Google Sheet URL
+  ss <- "https://docs.google.com/spreadsheets/d/1bh6OJxxZrVjQGEv_ca76hDPKqgLTfQ3OzSNQA_X1nOs/edit?usp=sharing"
+  
+  # Function to read statements based on language
+  read_statements <- function(language) {
+    sheet_name <- paste0("statements_", language)
+    read_sheet(ss, sheet = sheet_name) %>%
+      select(Statement_ID, Statement, Explanation)
+  }
+  
+  # Read both language statements at startup
+  en_statements <- read_statements("en")
+  es_statements <- read_statements("es")
+  statements_data <- list(en = en_statements, es = es_statements)
+  
   # Reactive value to store the selected language
   selected_language <- reactive(input$language)
+  
+  # Reactive value to store the statements based on selected language
+  statements <- reactive({
+    req(selected_language())
+    statements_data[[selected_language()]]
+  })
   
   # Reactive values to control the panel visibility
   showSubmissionInProgress <- reactiveVal(FALSE)
   showThankYou <- reactiveVal(FALSE)
-  
-  # Reactive value to store the statements
-  statements <- reactive({
-    req(selected_language())
-    read_statements(selected_language())
-  })
-  
-  # Current statement index
-  current_statement <- reactiveVal(1)
-  
-  # Reactive value to store the selected points
-  selected_points <- reactiveVal(data.frame(Statement_ID = integer(), A = numeric(), B = numeric(), C = numeric(), Statement = character(), stringsAsFactors = FALSE))
-  
-  # Reactive value to store the last valid coordinates
-  last_valid_coords <- reactiveVal(data.frame(A = 0, B = 0, C = 0))
-  
-  # Reactive value to store the hover coordinates
-  hover_coords <- reactiveVal(NULL)
   
   # Reactive value to control the survey display
   show_survey <- reactiveVal(FALSE)
@@ -217,24 +110,125 @@ server <- function(input, output, session) {
   # Reactive value to control the introduction display
   show_introduction <- reactiveVal(FALSE)
   
-  # Reactive value to track progress
-  progress <- reactiveVal(data.frame(
-    Question = 1,
-    Status = "Pending",
-    stringsAsFactors = FALSE
-  ))
+  # Introduction steps
+  intro_step <- reactiveVal(1)
+  
+  # Initialize reactiveValues
+  rv <- reactiveValues(
+    current_statement = 1,
+    selected_points = data.frame(Statement_ID = integer(), A = numeric(), B = numeric(), C = numeric(), Statement = character(), stringsAsFactors = FALSE),
+    progress = data.frame(
+      Question = 1,
+      Status = "Pending",
+      stringsAsFactors = FALSE
+    ),
+    saved_data = NULL,
+    last_valid_coords = data.frame(A = 0, B = 0, C = 0)
+  )
+  
+  # Create grid points for the ternary plot
+  grid_points <- expand.grid(
+    A = seq(0, 30, by = 1),
+    B = seq(0, 30, by = 1),
+    C = seq(0, 30, by = 1)
+  )
+  grid_points <- grid_points[round(grid_points$A + grid_points$B + grid_points$C, 1) == 30, ]
+  
+  # Function to format the hover text
+  hover_text <- function(df) {
+    df %>%
+      group_by(A, B, C) %>%
+      summarize(Text = paste("Statement", Statement_ID, ": ", Statement, collapse = "<br>"), .groups = 'drop') %>%
+      select(A, B, C, Text)
+  }
+  
+  # Function to generate circle points in barycentric coordinates
+  generate_circle_points_barycentric <- function(center, radius, n_points = 100) {
+    angles <- seq(0, 2 * pi, length.out = n_points)
+    lambda <- center[1]
+    mu <- center[2]
+    nu <- center[3]
+    
+    circle_points <- data.frame(
+      a = lambda + radius * cos(angles),
+      b = mu + radius * cos(angles + 2 * pi / 3),
+      c = nu + radius * cos(angles - 2 * pi / 3)
+    )
+    
+    circle_points <- circle_points[round(circle_points$a + circle_points$b + circle_points$c, 1) == 30, ]
+    return(circle_points)
+  }
+  
+  # Function to calculate linearly increasing opacities
+  calculate_opacities_linear <- function(num_circles) {
+    opacities <- numeric(num_circles)
+    T_prev <- 0
+    for (i in 1:num_circles) {
+      T_i <- i / num_circles
+      opacities[i] <- (T_i - T_prev) / (1 - T_prev)
+      T_prev <- T_i
+    }
+    return(opacities)
+  }
+  
+  # Define centers and radius for the circles (in barycentric coordinates)
+  centers <- list(
+    c(0, 0, 30),  # Red circle center
+    c(30, 0, 0),  # Green circle center
+    c(0, 30, 0)   # Blue circle center
+  )
+  radius <- 22  # Radius of the circles
+  
+  # Define colors with base color and calculate opacities
+  num_circles <- 35
+  opacities <- calculate_opacities_linear(num_circles)
+  colors <- list(
+    list(base_color = 'rgba(219, 114, 114, %.2f)', # Red color
+         opacities = rev(opacities)),  # Reverse to start with highest opacity
+    list(base_color = 'rgba(175, 194, 120, %.2f)', # Green color
+         opacities = rev(opacities)),  # Reverse to start with highest opacity
+    list(base_color = 'rgba(94, 135, 189, %.2f)', # Blue color
+         opacities = rev(opacities))  # Reverse to start with highest opacity
+  )
+  
+  # Generate concentric circles with varying opacities
+  concentric_circles <- list()
+  for (i in 1:length(centers)) {
+    center <- centers[[i]]
+    color_info <- colors[[i]]
+    for (j in 1:length(color_info$opacities)) {
+      opacity <- color_info$opacities[j]
+      circle_color <- sprintf(color_info$base_color, opacity)
+      points <- generate_circle_points_barycentric(center, radius * j / length(color_info$opacities))
+      concentric_circles[[length(concentric_circles) + 1]] <- list(points = points, color = circle_color)
+    }
+  }
+  
+  # Function to adjust points to respect ternary constraints
+  adjust_points <- function(points) {
+    points$a <- pmin(pmax(points$a, 0), 30)
+    points$b <- pmin(pmax(points$b, 0), 30)
+    points$c <- 30 - points$a - points$b
+    return(points)
+  }
+  
+  # Adjust all concentric circle points
+  concentric_circles <- lapply(concentric_circles, function(circle) {
+    circle$points <- adjust_points(circle$points)
+    return(circle)
+  })
+  
+  # Reactive value to store the hover coordinates
+  hover_coords <- reactiveVal(NULL)
   
   observe({
     statements_data <- statements()
-    progress(data.frame(
+    rv$progress <- data.frame(
       Question = 1:nrow(statements_data),
       Status = rep("Pending", nrow(statements_data)),
       stringsAsFactors = FALSE
-    ))
+    )
   })
-  
-  # Introduction steps
-  intro_step <- reactiveVal(1)
   
   observeEvent(input$start_button, {
     if (input$participant_name == "") {
@@ -321,7 +315,7 @@ server <- function(input, output, session) {
     } else {
       tagList(
         h2("Instrucciones prácticas"),
-        span("A continuación se muestra una imagen del aspecto que tendrá el panel de la encuesta una vez que pulse el botón"), strong("Comenzar Encuestra"), span("de abajo."),
+        span("A continuación se muestra una imagen del aspecto que tendrá el panel de la encuesta una vez que pulse el botón"), strong("Comenzar Encuesta"), span("de abajo."),
         tags$br(),
         p("La parte superior del panel muestra la declaración actual que se va a codificar, con una explicación adjunta cuando sea necesario. Debajo, verá cuatro botones:"),
         HTML("<ul><li> <b>No seguro</b> : Este botón debe utilizarse para las declaraciones que no sabe cómo asignar.
@@ -358,68 +352,64 @@ server <- function(input, output, session) {
     )
   })
   
-  # Saved data as a reactive value
-  saved_data <- reactiveVal()
-  
   observe({
-    saved_data(initial_data())
+    rv$saved_data <- initial_data()
   })
   
-  # Display the next statement
+  # Next button observer
   observeEvent(input$next_button, {
-    prog <- progress()
-    if (prog$Status[current_statement()] == "Selected" || prog$Status[current_statement()] == "Seleccionado") {
-      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Done", "Hecho")
-      progress(prog)
+    prog <- rv$progress
+    if (prog$Status[rv$current_statement] == "Selected" || prog$Status[rv$current_statement] == "Seleccionado") {
+      prog$Status[rv$current_statement] <- ifelse(selected_language() == "en", "Done", "Hecho")
+      rv$progress <- prog
     }
-    new_index <- current_statement() %% nrow(statements()) + 1
-    current_statement(new_index)
-    
+    new_index <- rv$current_statement %% nrow(statements()) + 1
+    rv$current_statement <- new_index
     # Scroll the table to the current statement
     session$sendCustomMessage("scrollToRow", new_index)
   })
   
+  # Back button observer
   observeEvent(input$back_button, {
-    new_index <- ifelse(current_statement() > 1, current_statement() - 1, nrow(statements()))
-    current_statement(new_index)
-    
+    new_index <- ifelse(rv$current_statement > 1, rv$current_statement - 1, nrow(statements()))
+    rv$current_statement <- new_index
     # Scroll the table to the current statement
     session$sendCustomMessage("scrollToRow", new_index)
   })
   
   observeEvent(input$unsure_button, {
     coords <- data.frame(A = 0, B = 0, C = 0)
-    current_statement_id <- current_statement()
-    selected_points_df <- selected_points()
+    current_statement_id <- rv$current_statement
+    selected_points_df <- rv$selected_points
     
     # Remove existing point for the current statement
     selected_points_df <- selected_points_df[selected_points_df$Statement_ID != current_statement_id, ]
     
     # Add the new point for the current statement
     selected_points_df <- rbind(selected_points_df, data.frame(Statement_ID = current_statement_id, A = coords$A, B = coords$B, C = coords$C, Statement = statements()$Statement[current_statement_id]))
-    selected_points(selected_points_df)
+    rv$selected_points <- selected_points_df
     
-    data <- saved_data()
+    data <- rv$saved_data
     data[current_statement_id, c("NAT_Coords", "CUL_Coords", "SOC_Coords")] <- coords
-    saved_data(data)
+    rv$saved_data <- data
     
-    prog <- progress()
-    if (prog$Status[current_statement()] == "Pending" || prog$Status[current_statement()] == "Pendiente") {
-      prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Selected", "Seleccionado")
+    prog <- rv$progress
+    if (prog$Status[rv$current_statement] == "Pending" || prog$Status[rv$current_statement] == "Pendiente") {
+      prog$Status[rv$current_statement] <- ifelse(selected_language() == "en", "Selected", "Seleccionado")
     }
-    progress(prog)
+    rv$progress <- prog
   })
   
   output$statement_title <- renderText({
     if (selected_language() == "en") {
-      paste("Statement", current_statement(), ":")
+      paste("Statement", rv$current_statement, ":")
     } else {
-      paste("Declaración", current_statement(), ":")
+      paste("Declaración", rv$current_statement, ":")
     }
   })
   
   output$statement <- renderText({
-    statements()$Statement[current_statement()]
+    statements()$Statement[rv$current_statement]
   })
   
   output$explanation_title <- renderText({
@@ -431,7 +421,7 @@ server <- function(input, output, session) {
   })
   
   output$explanation <- renderText({
-    statements()$Explanation[current_statement()]
+    statements()$Explanation[rv$current_statement]
   })
   
   output$unsure_button_ui <- renderUI({
@@ -541,12 +531,12 @@ server <- function(input, output, session) {
   
   # Initial plot creation
   output$ternaryPlot <- renderPlotly({
-    create_ternary_plot(selected_points())
+    create_ternary_plot(rv$selected_points)
   })
   
   # Update points on the plot using plotlyProxy
   observe({
-    selected_points_df <- selected_points()
+    selected_points_df <- rv$selected_points
     proxy <- plotlyProxy("ternaryPlot", session)
     
     # Update or add the selected points trace
@@ -585,7 +575,7 @@ server <- function(input, output, session) {
         # Use the hover coordinates if hover text is active
         coords <- hover_coords()
         if (is.null(coords)) {
-          coords <- last_valid_coords()
+          coords <- rv$last_valid_coords
         }
       } else {
         # Capture the click data
@@ -593,17 +583,17 @@ server <- function(input, output, session) {
         coords <- grid_points[point_index, ]
         
         # Update the last valid coordinates
-        last_valid_coords(coords)
+        rv$last_valid_coords <- coords
       }
-      current_statement_id <- current_statement()
-      selected_points_df <- selected_points()
+      current_statement_id <- rv$current_statement
+      selected_points_df <- rv$selected_points
       
       # Remove existing point for the current statement
       selected_points_df <- selected_points_df[selected_points_df$Statement_ID != current_statement_id, ]
       
       # Add the new point for the current statement
       selected_points_df <- rbind(selected_points_df, data.frame(Statement_ID = current_statement_id, A = coords$A, B = coords$B, C = coords$C, Statement = statements()$Statement[current_statement_id]))
-      selected_points(selected_points_df)
+      rv$selected_points <- selected_points_df
       
       # Update the plot immediately
       hover_data <- hover_text(selected_points_df)
@@ -622,15 +612,15 @@ server <- function(input, output, session) {
       ))
       
       # Update the table
-      data <- saved_data()
-      data[current_statement(), c("NAT_Coords", "CUL_Coords", "SOC_Coords")] <- coords
-      saved_data(data)
+      data <- rv$saved_data
+      data[rv$current_statement, c("NAT_Coords", "CUL_Coords", "SOC_Coords")] <- coords
+      rv$saved_data <- data
       
-      prog <- progress()
-      if (prog$Status[current_statement()] == "Pending" || prog$Status[current_statement()] == "Pendiente") {
-        prog$Status[current_statement()] <- ifelse(selected_language() == "en", "Selected", "Seleccionado")
+      prog <- rv$progress
+      if (prog$Status[rv$current_statement] == "Pending" || prog$Status[rv$current_statement] == "Pendiente") {
+        prog$Status[rv$current_statement] <- ifelse(selected_language() == "en", "Selected", "Seleccionado")
       }
-      progress(prog)
+      rv$progress <- prog
     }
   })
   
@@ -643,18 +633,13 @@ server <- function(input, output, session) {
     # Use shinyjs::delay to delay further actions and allow UI update
     shinyjs::delay(100, {
       # Proceed with the data submission
-      prog <- progress()
+      prog <- rv$progress
       if (all(prog$Status %in% c("Done", "Selected", "Hecho", "Seleccionado"))) {
         
-        data <- saved_data()
+        data <- rv$saved_data
         
-        # Check the highest Participant_ID in the sheet
-        existing_data <- read_sheet(ss, sheet = "responses")
-        if (nrow(existing_data) == 0) {
-          participant_id <- 1
-        } else {
-          participant_id <- max(existing_data$Participant_ID, na.rm = TRUE) + 1
-        }
+        # Generate a unique participant ID using a timestamp
+        participant_id <- as.numeric(Sys.time())
         
         # Add submission time in Central European Time (MEZ)
         data$time <- with_tz(now(), tzone = "Europe/Zurich")
@@ -677,8 +662,8 @@ server <- function(input, output, session) {
         showThankYou(TRUE)  # Show "thank you" message
         
         # Clear the selected points and saved data
-        selected_points(data.frame(Statement_ID = integer(), A = numeric(), B = numeric(), C = numeric(), Statement = character(), stringsAsFactors = FALSE))
-        saved_data(initial_data())
+        rv$selected_points <- data.frame(Statement_ID = integer(), A = numeric(), B = numeric(), C = numeric(), Statement = character(), stringsAsFactors = FALSE)
+        rv$saved_data <- initial_data()
         
       } else {
         # Handle case when not all statements are completed
@@ -693,15 +678,14 @@ server <- function(input, output, session) {
     })
   })
   
-  
   output$progress_table <- renderTable(
     {
-      prog <- progress()
+      prog <- rv$progress
       prog$Status <- ifelse(prog$Status == "Pending", ifelse(selected_language() == "en", "Pending", "Pendiente"), prog$Status)
       prog$Status <- ifelse(prog$Status == "Done", ifelse(selected_language() == "en", "Done", "Hecho"), prog$Status)
       prog$Status <- ifelse(prog$Status == "Selected", ifelse(selected_language() == "en", "Selected", "Seleccionado"), prog$Status)
-      prog$Status <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Status, "</b>"), prog$Status)
-      prog$Question <- ifelse(prog$Question == current_statement(), paste0("<b>", prog$Question, "</b>"), prog$Question)
+      prog$Status <- ifelse(prog$Question == rv$current_statement, paste0("<b>", prog$Status, "</b>"), prog$Status)
+      prog$Question <- ifelse(prog$Question == rv$current_statement, paste0("<b>", prog$Question, "</b>"), prog$Question)
       prog <- prog[, c("Question", "Status")]
       if (selected_language() == "en") {
         colnames(prog) <- c("Question", "Status")
