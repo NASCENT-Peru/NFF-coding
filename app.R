@@ -670,7 +670,7 @@ server <- function(input, output, session) {
     }
   })
   
-  # *** Submit Button Observer with Warning Handling ***
+  #Submit Button Observer with Warning Handling
   observeEvent(input$submit_button, {
     prog <- rv$progress
     # Check if all statements are completed
