@@ -10,13 +10,27 @@ ui <- fluidPage(
   titlePanel(title = span(img(src = "NASCENT_logo_horizontal.jpg", height = 50), "Scenario content coding survey")),
   useShinyjs(),
   
+  # Add custom JavaScript for autoscroll functionality
+  tags$head(
+    tags$script(HTML("
+      Shiny.addCustomMessageHandler('scrollToRow', function(row) {
+        var table = document.getElementById('progress_table');
+        if(table){
+          var targetRow = table.getElementsByTagName('tr')[row];
+          if(targetRow){
+            targetRow.scrollIntoView({behavior: 'smooth', block: 'center'});
+          }
+        }
+      });
+    "))
+  ),
+  
   sidebarLayout(
     sidebarPanel(
-      selectInput("language", "Language / Idioma", choices = c("English" = "en", "Español" = "es")),
-      
-      # Initial panel to capture name and start the introduction
+      # Moved language selection inside the initial conditional panel
       conditionalPanel(
         condition = "!output.showSurvey && !output.showSubmissionInProgress && !output.showThankYou && !output.showIntroduction",
+        selectInput("language", "Language / Idioma", choices = c("English" = "en", "Español" = "es")),
         textInput("participant_name", "Name / Nombre"),
         checkboxInput("checkbox", "Check if you do NOT want your Name to be published on the NASCENT-Peru Website / Marque si NO desea que su nombre se publique en el sitio web de NASCENT-Peru"),
         actionButton("start_button", "Start Introduction / Comenzar Introducción"),
@@ -34,11 +48,12 @@ ui <- fluidPage(
         textOutput("explanation"),
         tags$head(tags$style(HTML("#explanation_title {font-weight: bold;} #explanation {font-size: 18px;}"))),
         br(), br(),
+        textOutput("warning_submission"), # New text output for warning message
+        br(),
         uiOutput("unsure_button_ui", style = 'display: inline-block; margin-left: 15px;'),
         uiOutput("next_button_ui", style = 'display: inline-block;'),
         uiOutput("back_button_ui", style = 'display: inline-block;'),
         uiOutput("submit_button_ui", style = 'display: inline-block;'),
-        textOutput("warning_submission"),
         br(),
         div(style = 'overflow-y:scroll; max-height:300px;', tableOutput("progress_table"))
       ),
@@ -221,6 +236,15 @@ server <- function(input, output, session) {
   # Reactive value to store the hover coordinates
   hover_coords <- reactiveVal(NULL)
   
+  # Reactive value for warning message
+  warning_msg <- reactiveVal("")
+  
+  # Render the warning message based on the reactive value
+  output$warning_submission <- renderText({
+    warning_msg()
+  })
+  
+  # Initialize progress data based on the selected language
   observe({
     statements_data <- statements()
     rv$progress <- data.frame(
@@ -230,6 +254,7 @@ server <- function(input, output, session) {
     )
   })
   
+  # Start Introduction Button Observer
   observeEvent(input$start_button, {
     if (input$participant_name == "") {
       output$warning <- renderText({
@@ -246,6 +271,14 @@ server <- function(input, output, session) {
     }
   })
   
+  # Back button observer in the introduction
+  observeEvent(input$back_intro_button, {
+    show_introduction(FALSE)
+    # Optionally, reset intro_step if you have multiple steps
+    intro_step(1)
+  })
+  
+  # Next button observer in the introduction (if multiple steps)
   observeEvent(input$next_intro_button, {
     step <- intro_step()
     if (step < 2) {
@@ -253,13 +286,7 @@ server <- function(input, output, session) {
     }
   })
   
-  observeEvent(input$back_intro_button, {
-    step <- intro_step()
-    if (step > 1) {
-      intro_step(step - 1)
-    }
-  })
-  
+  # Start Survey Button Observer
   observeEvent(input$start_survey_button, {
     show_introduction(FALSE)
     show_survey(TRUE)
@@ -352,6 +379,7 @@ server <- function(input, output, session) {
     )
   })
   
+  # Initialize saved_data once the statements are loaded
   observe({
     rv$saved_data <- initial_data()
   })
@@ -365,6 +393,10 @@ server <- function(input, output, session) {
     }
     new_index <- rv$current_statement %% nrow(statements()) + 1
     rv$current_statement <- new_index
+    
+    # Clear the warning message when moving to the next statement
+    warning_msg("")  # Reset the warning message
+    
     # Scroll the table to the current statement
     session$sendCustomMessage("scrollToRow", new_index)
   })
@@ -373,10 +405,15 @@ server <- function(input, output, session) {
   observeEvent(input$back_button, {
     new_index <- ifelse(rv$current_statement > 1, rv$current_statement - 1, nrow(statements()))
     rv$current_statement <- new_index
+    
+    # Clear the warning message when moving back to a previous statement
+    warning_msg("")  # Reset the warning message
+    
     # Scroll the table to the current statement
     session$sendCustomMessage("scrollToRow", new_index)
   })
   
+  # Unsure button observer
   observeEvent(input$unsure_button, {
     coords <- data.frame(A = 0, B = 0, C = 0)
     current_statement_id <- rv$current_statement
@@ -400,6 +437,7 @@ server <- function(input, output, session) {
     rv$progress <- prog
   })
   
+  # Statement Title
   output$statement_title <- renderText({
     if (selected_language() == "en") {
       paste("Statement", rv$current_statement, ":")
@@ -408,10 +446,12 @@ server <- function(input, output, session) {
     }
   })
   
+  # Statement Text
   output$statement <- renderText({
     statements()$Statement[rv$current_statement]
   })
   
+  # Explanation Title
   output$explanation_title <- renderText({
     if (selected_language() == "en") {
       "Explanation:"
@@ -420,22 +460,27 @@ server <- function(input, output, session) {
     }
   })
   
+  # Explanation Text
   output$explanation <- renderText({
     statements()$Explanation[rv$current_statement]
   })
   
+  # Unsure Button UI
   output$unsure_button_ui <- renderUI({
     actionButton("unsure_button", ifelse(selected_language() == "en", "Unsure", "No seguro"))
   })
   
+  # Next Button UI
   output$next_button_ui <- renderUI({
     actionButton("next_button", ifelse(selected_language() == "en", "Next", "Siguiente"))
   })
   
+  # Back Button UI
   output$back_button_ui <- renderUI({
     actionButton("back_button", ifelse(selected_language() == "en", "Back", "Atrás"))
   })
   
+  # Submit Button UI
   output$submit_button_ui <- renderUI({
     actionButton("submit_button", ifelse(selected_language() == "en", "Submit", "Enviar"))
   })
@@ -539,8 +584,9 @@ server <- function(input, output, session) {
     selected_points_df <- rv$selected_points
     proxy <- plotlyProxy("ternaryPlot", session)
     
-    # Update or add the selected points trace
+    # Delete existing points trace (assumed to be trace index 1)
     plotlyProxyInvoke(proxy, "deleteTraces", list(1))
+    
     if (nrow(selected_points_df) > 0) {
       hover_data <- hover_text(selected_points_df)
       plotlyProxyInvoke(proxy, "addTraces", list(
@@ -560,18 +606,18 @@ server <- function(input, output, session) {
   # Store hover information
   observeEvent(event_data("plotly_hover", source = "ternaryPlot"), {
     hover_info <- event_data("plotly_hover", source = "ternaryPlot")
-    if (!is.null(hover_info) && hover_info$curveNumber != 106) {
+    if (!is.null(hover_info) && hover_info$curveNumber != 106) { # Adjust curveNumber as needed
       point_index <- hover_info$pointNumber + 1 # R indexes start at 1
       coords <- grid_points[point_index, ]
       hover_coords(coords) # Store the hover coordinates in reactive value
     }
   })
   
-  # Observe clicks on the plot to directly capture coordinates
-  observeEvent(event_data("plotly_click", source = "ternaryPlot"), {
-    click_data <- event_data("plotly_click", source = "ternaryPlot")
+  # Observe clicks on the plot with priority = "event"
+  observeEvent(event_data("plotly_click", priority = "event", source = "ternaryPlot"), {
+    click_data <- event_data("plotly_click", priority = "event", source = "ternaryPlot")
     if (!is.null(click_data)) {
-      if (click_data$curveNumber == 106) {
+      if (click_data$curveNumber == 106) { # Adjust curveNumber based on your plot
         # Use the hover coordinates if hover text is active
         coords <- hover_coords()
         if (is.null(coords)) {
@@ -624,18 +670,17 @@ server <- function(input, output, session) {
     }
   })
   
-  # Submit handler for the Google Sheet
+  # *** Submit Button Observer with Warning Handling ***
   observeEvent(input$submit_button, {
-    # First, hide the survey panel and show the "submission in progress" message
-    show_survey(FALSE)  # Hide survey content
-    showSubmissionInProgress(TRUE)  # Show "submission in progress" message
-    
-    # Use shinyjs::delay to delay further actions and allow UI update
-    shinyjs::delay(100, {
-      # Proceed with the data submission
-      prog <- rv$progress
-      if (all(prog$Status %in% c("Done", "Selected", "Hecho", "Seleccionado"))) {
-        
+    prog <- rv$progress
+    # Check if all statements are completed
+    if (all(prog$Status %in% c("Done", "Selected", "Hecho", "Seleccionado"))) {
+      # All statements are completed, proceed with submission
+      show_survey(FALSE)  # Hide survey content
+      showSubmissionInProgress(TRUE)  # Show "submission in progress" message
+      
+      # Use shinyjs::delay to delay further actions and allow UI update
+      shinyjs::delay(100, {
         data <- rv$saved_data
         
         # Generate a unique participant ID using a timestamp
@@ -664,28 +709,25 @@ server <- function(input, output, session) {
         # Clear the selected points and saved data
         rv$selected_points <- data.frame(Statement_ID = integer(), A = numeric(), B = numeric(), C = numeric(), Statement = character(), stringsAsFactors = FALSE)
         rv$saved_data <- initial_data()
-        
-      } else {
-        # Handle case when not all statements are completed
-        output$warning_submission <- renderText({
-          if (selected_language() == "en") {
-            "Not all statements are done."
-          } else {
-            "No todas las declaraciones están completas."
-          }
-        })
-      }
-    })
+      })
+    } else {
+      # Not all statements are completed, show warning
+      warning_msg(ifelse(selected_language() == "en", "Not all statements are done.", "No todas las declaraciones están completas."))
+      
+      # Ensure that the submission in progress message is hidden
+      showSubmissionInProgress(FALSE)
+    }
   })
   
+  # Render the progress table
   output$progress_table <- renderTable(
     {
       prog <- rv$progress
       prog$Status <- ifelse(prog$Status == "Pending", ifelse(selected_language() == "en", "Pending", "Pendiente"), prog$Status)
       prog$Status <- ifelse(prog$Status == "Done", ifelse(selected_language() == "en", "Done", "Hecho"), prog$Status)
       prog$Status <- ifelse(prog$Status == "Selected", ifelse(selected_language() == "en", "Selected", "Seleccionado"), prog$Status)
-      prog$Status <- ifelse(prog$Question == rv$current_statement, paste0("<b>", prog$Status, "</b>"), prog$Status)
       prog$Question <- ifelse(prog$Question == rv$current_statement, paste0("<b>", prog$Question, "</b>"), prog$Question)
+      prog$Status <- ifelse(prog$Status %in% c("Done", "Selected", "Hecho", "Seleccionado"), paste0("<b>", prog$Status, "</b>"), prog$Status)
       prog <- prog[, c("Question", "Status")]
       if (selected_language() == "en") {
         colnames(prog) <- c("Question", "Status")
