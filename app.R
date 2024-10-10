@@ -726,8 +726,20 @@ server <- function(input, output, session) {
       prog$Status <- ifelse(prog$Status == "Pending", ifelse(selected_language() == "en", "Pending", "Pendiente"), prog$Status)
       prog$Status <- ifelse(prog$Status == "Done", ifelse(selected_language() == "en", "Done", "Hecho"), prog$Status)
       prog$Status <- ifelse(prog$Status == "Selected", ifelse(selected_language() == "en", "Selected", "Seleccionado"), prog$Status)
-      prog$Question <- ifelse(prog$Question == rv$current_statement, paste0("<b>", prog$Question, "</b>"), prog$Question)
-      prog$Status <- ifelse(prog$Status %in% c("Done", "Selected", "Hecho", "Seleccionado"), paste0("<b>", prog$Status, "</b>"), prog$Status)
+      
+      # Convert 'Question' to character if it's not already
+      prog$Question <- as.character(prog$Question)
+      
+      # Identify the current statement row
+      current_row <- prog$Question == as.character(rv$current_statement)
+      
+      # Bold both columns for the current statement
+      prog$Question[current_row] <- paste0("<b>", prog$Question[current_row], "</b>")
+      prog$Status[current_row] <- paste0("<b>", prog$Status[current_row], "</b>")
+      
+      # Remove the bolding based on status
+      # prog$Status <- ifelse(prog$Status %in% c("Done", "Selected", "Hecho", "Seleccionado"), paste0("<b>", prog$Status, "</b>"), prog$Status)
+      
       prog <- prog[, c("Question", "Status")]
       if (selected_language() == "en") {
         colnames(prog) <- c("Question", "Status")
