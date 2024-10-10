@@ -614,6 +614,8 @@ server <- function(input, output, session) {
   })
   
   # Observe clicks on the plot with priority = "event"
+  # CurveNumber 106 occurs when a click happens while the hover over is active
+  # this will misplace the click, hence the handling
   observeEvent(event_data("plotly_click", priority = "event", source = "ternaryPlot"), {
     click_data <- event_data("plotly_click", priority = "event", source = "ternaryPlot")
     if (!is.null(click_data)) {
